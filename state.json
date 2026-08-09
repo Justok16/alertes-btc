@@ -1,6 +1,6 @@
 {
-  "alternative_zone": "buy",
-  "coingecko_zone": "buy",
-  "cmc_zone": "buy",
-  "combined_state": "buy"
+  "alternative_zone": "neutral",
+  "coingecko_zone": "neutral",
+  "cmc_zone": "neutral",
+  "combined_state": "neutral"
 }
