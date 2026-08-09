@@ -29,7 +29,7 @@ STATE_FILE = Path(__file__).parent / "state.json"
 
 # Seuils Fear & Greed (0-100). <= BUY_THRESHOLD => peur extreme => achat
 # >= SELL_THRESHOLD => avidite extreme => vente. Meme rigueur des deux cotes.
-BUY_THRESHOLD = 20
+BUY_THRESHOLD = 100  # TEST TEMPORAIRE - force une alerte pour verifier Telegram, sera revert
 SELL_THRESHOLD = 80
 
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
