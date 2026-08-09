@@ -187,6 +187,8 @@ def send_telegram(message):
         json={"chat_id": TELEGRAM_CHAT_ID, "text": message, "parse_mode": "HTML"},
         timeout=HTTP_TIMEOUT,
     )
+    if not r.ok:
+        print(f"[telegram] reponse de l'API: {r.status_code} {r.text}", file=sys.stderr)
     r.raise_for_status()
 
 
