@@ -1,0 +1,9 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# Secrets locaux (jamais utilises en prod, GitHub Actions passe par secrets.*)
+.env

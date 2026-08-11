@@ -230,10 +230,23 @@ def main():
 
     previous_combined = state.get("combined_state", "neutral")
 
+    # L'envoi Telegram est entoure d'un try/except : si Telegram echoue
+    # (token invalide, timeout, erreur temporaire de leur API...), l'etat du
+    # jour doit quand meme etre sauvegarde plus bas. Sans ce garde-fou, un
+    # echec d'envoi empechait save_state() de s'executer (exception non
+    # rattrapee qui arretait tout le script avant), et le lendemain le
+    # script retentait d'envoyer la MEME alerte en boucle jusqu'a ce que
+    # Telegram remarche, potentiellement avec un signal devenu perime
+    # entre-temps.
+    alerte_echouee = False
     if combined_state in ("buy", "sell") and combined_state != previous_combined:
         message = build_message(combined_state, score_alt, score_cg, score_cmc)
-        send_telegram(message)
-        print("Alerte envoyee:", combined_state)
+        try:
+            send_telegram(message)
+            print("Alerte envoyee:", combined_state)
+        except Exception as e:
+            print(f"[telegram] echec de l'envoi: {e}", file=sys.stderr)
+            alerte_echouee = True
     else:
         print("Pas d'alerte (etat inchange ou pas assez de sources d'accord).")
 
@@ -242,6 +255,12 @@ def main():
     state["cmc_zone"] = zone_cmc or state.get("cmc_zone", "neutral")
     state["combined_state"] = combined_state
     save_state(state)
+
+    if alerte_echouee:
+        # Etat bien sauvegarde (ci-dessus) malgre l'echec -- on fait quand
+        # meme echouer le job GitHub Actions pour que l'echec reste visible
+        # dans l'onglet Actions plutot que de passer inaperçu.
+        sys.exit(1)
 
 
 if __name__ == "__main__":
