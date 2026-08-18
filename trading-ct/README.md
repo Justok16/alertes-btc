@@ -19,7 +19,12 @@ Pour chaque actif de `watchlist.py`, calcul de 3 indicateurs independants
 |---|---|---|---|
 | RSI(14) | <= 15 | >= 85 | RSI classique sur bougies 15 min |
 | MACD score (14) | <= 15 | >= 85 | Histogramme MACD normalise sur son min/max des 14 dernieres bougies |
-| Fear & Greed (14) | <= 10 (crypto) / <= 15 (actions/ETF) | >= 85 | Indice Alternative.me pour la crypto ; score maison (RSI + position dans le range 14) pour actions/ETF, qui n'ont pas d'indice F&G officiel individuel |
+| Fear & Greed (14) | <= 15 | >= 85 | Indice Alternative.me pour la crypto ; score maison (RSI + position dans le range 14) pour actions/ETF, qui n'ont pas d'indice F&G officiel individuel |
+
+Seuil F&G crypto aligne sur RSI/MACD (15/85, au lieu de 10/85 a l'origine)
+suite a un backtest sur l'historique BTC complet + validation hors-echantillon
+(voir `backtest_walkforward.py`) : c'est la seule variante testee qui bat le
+buy & hold sur deux periodes independantes (2018-2021 et 2022-2026).
 
 **Une alerte n'est envoyee que si les 3 indicateurs sont d'accord** (unanimite,
 pas de vote a 2 sur 3) sur le meme sens, ET que cet etat combine vient de

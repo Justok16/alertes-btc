@@ -8,7 +8,9 @@ que l'etat combine vient de changer par rapport a la derniere execution :
 
   1. RSI(14)                         : <=15 achat, >=85 vente
   2. MACD histogramme normalise (14) : <=15 achat, >=85 vente
-  3. Fear & Greed (14)               : <=10 achat, >=85 vente
+  3. Fear & Greed (14)               : <=15 achat, >=85 vente (seuils alignes
+     sur RSI/MACD -- voir backtest_walkforward.py, seule variante validee
+     hors-echantillon sur l'historique BTC)
      - crypto  : indice Alternative.me (marche crypto global)
      - actions/ETF : score maison (RSI(14) + position dans le range 14
        bougies), pas d'indice F&G officiel par titre individuel
@@ -38,7 +40,7 @@ STATE_FILE = Path(__file__).parent / "state.json"
 # Seuils demandes : stricts des deux cotes, unanimite requise entre les 3 indicateurs
 RSI_BUY, RSI_SELL = 15, 85
 MACD_BUY, MACD_SELL = 15, 85
-FNG_CRYPTO_BUY, FNG_CRYPTO_SELL = 10, 85
+FNG_CRYPTO_BUY, FNG_CRYPTO_SELL = 15, 85
 HOME_BUY, HOME_SELL = 15, 85
 
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
