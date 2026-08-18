@@ -64,7 +64,12 @@ def fetch_full_daily_bars(symbol):
     all_bars = []
     page_token = None
     while True:
-        params = {"timeframe": "1Day", "start": HISTORY_START, "limit": 10000, "feed": "iex"}
+        # adjustment=split : corrige les splits boursiers (sinon un split
+        # (ex. NVDA 10-pour-1 en 2024) apparait comme un faux krach du prix
+        # dans les donnees, faussant a la fois le buy & hold et les
+        # indicateurs RSI/MACD calcules dessus.
+        params = {"timeframe": "1Day", "start": HISTORY_START, "limit": 10000, "feed": "iex",
+                  "adjustment": "split"}
         if page_token:
             params["page_token"] = page_token
         r = get_with_retry(ALPACA_BARS_URL.format(symbol=symbol), params=params, headers=headers)

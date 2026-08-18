@@ -176,7 +176,9 @@ def fetch_alpaca_closes(symbol, timeframe="15Min", limit=100):
     try:
         r = get_with_retry(
             ALPACA_BARS_URL.format(symbol=symbol),
-            params={"timeframe": timeframe, "limit": limit, "feed": "iex"},
+            # adjustment=split : evite qu'un split boursier apparaisse comme
+            # un faux krach du prix dans les 100 dernieres bougies
+            params={"timeframe": timeframe, "limit": limit, "feed": "iex", "adjustment": "split"},
             headers={"APCA-API-KEY-ID": ALPACA_API_KEY_ID, "APCA-API-SECRET-KEY": ALPACA_API_SECRET_KEY},
         )
         bars = r.json().get("bars", [])
