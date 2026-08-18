@@ -1,0 +1,33 @@
+name: Trading CT Backtest (actions/ETF)
+
+on:
+  workflow_dispatch:
+    inputs:
+      symbols:
+        description: "Symboles a backtester, separes par des espaces"
+        required: false
+        default: "SPY QQQ"
+
+jobs:
+  backtest-stocks:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: trading-ct
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run stocks/ETF backtest
+        env:
+          ALPACA_API_KEY_ID: ${{ secrets.ALPACA_API_KEY_ID }}
+          ALPACA_API_SECRET_KEY: ${{ secrets.ALPACA_API_SECRET_KEY }}
+        run: python backtest_stocks.py ${{ github.event.inputs.symbols }}
