@@ -7,3 +7,6 @@ venv/
 
 # Secrets locaux (jamais utilises en prod, GitHub Actions passe par secrets.*)
 .env
+
+# Sortie generee par les backtests (regenerable via backtest_btc.py)
+trading-ct/backtest_equity_curve.json
