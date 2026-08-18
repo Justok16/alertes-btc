@@ -3,6 +3,14 @@ name: Trading CT Backtest (actions/ETF)
 on:
   workflow_dispatch:
     inputs:
+      script:
+        description: "Script a lancer"
+        required: false
+        default: "backtest_stocks.py"
+        type: choice
+        options:
+          - backtest_stocks.py
+          - backtest_drawdown_stocks.py
       symbols:
         description: "Symboles a backtester, separes par des espaces"
         required: false
@@ -30,4 +38,4 @@ jobs:
         env:
           ALPACA_API_KEY_ID: ${{ secrets.ALPACA_API_KEY_ID }}
           ALPACA_API_SECRET_KEY: ${{ secrets.ALPACA_API_SECRET_KEY }}
-        run: python backtest_stocks.py ${{ github.event.inputs.symbols }}
+        run: python ${{ github.event.inputs.script }} ${{ github.event.inputs.symbols }}
