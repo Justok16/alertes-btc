@@ -13,7 +13,9 @@ plateforme de ton choix.
 ## Principe
 
 Pour chaque actif de `watchlist.py`, calcul de 3 indicateurs independants
-(ramenes sur une echelle 0-100) toutes les ~15 minutes :
+(ramenes sur une echelle 0-100) toutes les ~5 minutes, sur des bougies
+15 min (le pas de verification est plus fin que la bougie elle-meme, pour
+detecter le changement d'etat au plus tot apres la cloture d'une bougie) :
 
 | Indicateur | Zone achat | Zone vente | Detail |
 |---|---|---|---|
@@ -51,7 +53,9 @@ recommandation. Modifie-la librement : chaque entree a un `symbol`
   ne couvre pas ces marches, d'ou une source distincte. Le tier
   gratuit EODHD est limite a **20 appels API/jour** : ce bot ne verifie ces
   actifs qu'**une fois par jour** (18h00 UTC, apres cloture Xetra), pas toutes
-  les 15 min comme le reste.
+  les 5 min comme le reste -- et meme sans cette limite de quota, verifier
+  plus souvent ne servirait a rien : ce sont des cours de cloture (EOD), qui
+  ne changent qu'une fois par jour.
 
 ### Obtenir une cle Alpaca gratuite (a faire toi-meme)
 
@@ -76,8 +80,8 @@ recommandation. Modifie-la librement : chaque entree a un `symbol`
    - `ALPACA_API_SECRET_KEY`
    - `EODHD_API_TOKEN`
 2. Le workflow `trading-ct-alert.yml` (crypto + actions/ETF US) tourne
-   automatiquement toutes les 15 minutes. Le workflow
-   `trading-ct-eu-alert.yml` (ETF europeens) tourne une fois par jour.
+   automatiquement toutes les 5 minutes. Le workflow
+   `trading-ct-eu-alert.yml` (Europe + Chine) tourne une fois par jour.
    Les deux peuvent aussi etre lances manuellement via l'onglet
    **Actions > ... > Run workflow**.
 
@@ -95,8 +99,9 @@ Sans les cles Alpaca, les symboles `stock`/`etf` sont simplement ignores
 
 ## Limites connues
 
-- Ce n'est **pas** du scalping minute par minute : le cron GitHub Actions le
-  plus fiable tourne toutes les ~15 minutes, ce qui correspond plutot a du
+- Ce n'est **pas** du scalping minute par minute : meme a 5 min, le cron
+  GitHub Actions reste sujet a des retards occasionnels, et les indicateurs
+  restent calcules sur des bougies 15 min -- ca correspond plutot a du
   swing court/moyen terme (positions de quelques heures a quelques jours).
 - Les seuils stricts (15/85, 10/85) rendent les alertes rares par design.
 - Ne tient pas compte des jours feries du marche US : dans ce cas Alpaca ne

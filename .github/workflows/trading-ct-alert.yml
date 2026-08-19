@@ -2,9 +2,9 @@ name: Trading CT Alert
 
 on:
   schedule:
-    # Toutes les 15 minutes. Les actions/ETF sont de toute facon ignores
+    # Toutes les 5 minutes. Les actions/ETF sont de toute facon ignores
     # hors horaires du marche US (voir is_us_market_open() dans le script).
-    - cron: "*/15 * * * *"
+    - cron: "*/5 * * * *"
   workflow_dispatch: {}
 
 # Empeche deux executions de tourner en parallele (cron + declenchement
