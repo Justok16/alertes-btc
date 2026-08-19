@@ -1,1 +1,11 @@
-{}
+{
+  "VVSM.XETRA": {
+    "combined_state": "neutral"
+  },
+  "NUKL.XETRA": {
+    "combined_state": "neutral"
+  },
+  "SEC0.XETRA": {
+    "combined_state": "neutral"
+  }
+}
