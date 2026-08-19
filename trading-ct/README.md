@@ -43,9 +43,15 @@ recommandation. Modifie-la librement : chaque entree a un `symbol`
 
 - **Crypto** : `data-api.binance.vision` (miroir public Binance, sans cle,
   sans blocage geographique).
-- **Actions / ETF** : Alpaca Markets Data API (flux IEX, retard ~15 min sur
+- **Actions / ETF US** : Alpaca Markets Data API (flux IEX, retard ~15 min sur
   le plan gratuit). Ne verifie ces actifs que pendant les horaires du marche
   US (09:30-16:00 America/New_York, lun-ven).
+- **ETF europeens (Xetra)** : EODHD (`eu_watchlist.py` /
+  `trading_alert_eu.py`, workflow separe `trading-ct-eu-alert.yml`). Alpaca
+  ne couvre pas les marches europeens, d'ou une source distincte. Le tier
+  gratuit EODHD est limite a **20 appels API/jour** : ce bot ne verifie ces
+  ETF qu'**une fois par jour** (18h00 UTC, apres cloture Xetra), pas toutes
+  les 15 min comme le reste.
 
 ### Obtenir une cle Alpaca gratuite (a faire toi-meme)
 
@@ -55,15 +61,25 @@ recommandation. Modifie-la librement : chaque entree a un `symbol`
    suffit, ce bot ne passe aucun ordre).
 3. Ajoute-les comme secrets GitHub (voir plus bas).
 
+### Obtenir une cle EODHD gratuite (a faire toi-meme)
+
+1. Cree un compte gratuit sur https://eodhd.com (aucune carte bancaire
+   necessaire).
+2. Recupere ton `api_token` depuis le dashboard.
+3. Ajoute-le comme secret GitHub `EODHD_API_TOKEN` (voir plus bas).
+
 ## Setup
 
 1. Dans **Settings > Secrets and variables > Actions** de ce repo, ajoute
    (en plus des secrets Telegram deja utilises par le bot BTC) :
    - `ALPACA_API_KEY_ID`
    - `ALPACA_API_SECRET_KEY`
-2. Le workflow `trading-ct-alert.yml` tourne automatiquement toutes les 15
-   minutes. Tu peux aussi le lancer manuellement via l'onglet
-   **Actions > Trading CT Alert > Run workflow**.
+   - `EODHD_API_TOKEN`
+2. Le workflow `trading-ct-alert.yml` (crypto + actions/ETF US) tourne
+   automatiquement toutes les 15 minutes. Le workflow
+   `trading-ct-eu-alert.yml` (ETF europeens) tourne une fois par jour.
+   Les deux peuvent aussi etre lances manuellement via l'onglet
+   **Actions > ... > Run workflow**.
 
 ## Test en local
 
@@ -89,5 +105,6 @@ Sans les cles Alpaca, les symboles `stock`/`etf` sont simplement ignores
 
 ## Fichier d'etat
 
-`state.json` retient le dernier etat combine de chaque symbole, commite
-automatiquement par le workflow apres chaque execution.
+`state.json` (crypto + actions/ETF US) et `eu_state.json` (ETF europeens)
+retiennent le dernier etat combine de chaque symbole, commites
+automatiquement par leur workflow respectif apres chaque execution.
