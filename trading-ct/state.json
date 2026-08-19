@@ -4,5 +4,11 @@
   },
   "ETHUSDT": {
     "combined_state": "neutral"
+  },
+  "SPY": {
+    "combined_state": "neutral"
+  },
+  "QQQ": {
+    "combined_state": "neutral"
   }
 }
