@@ -22,4 +22,6 @@ WATCHLIST = [
     {"symbol": "XSD", "display": "SPDR S&P Semiconductor ETF (equal-weight)", "asset_class": "etf"},
     {"symbol": "SOXQ", "display": "Invesco PHLX Semiconductor ETF", "asset_class": "etf"},
     {"symbol": "PSI", "display": "Invesco Dynamic Semiconductors ETF", "asset_class": "etf"},
+    {"symbol": "SMHC", "display": "VanEck China Semiconductor ETF", "asset_class": "etf"},
+    {"symbol": "KTEC", "display": "KraneShares Hang Seng TECH Index ETF", "asset_class": "etf"},
 ]

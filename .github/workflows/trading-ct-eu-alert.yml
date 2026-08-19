@@ -3,7 +3,7 @@ name: Trading CT EU ETF Alert
 on:
   schedule:
     # Une fois par jour (18h00 UTC, apres cloture Xetra ~15h30 UTC) --
-    # tier gratuit EODHD limite a 20 appels/jour, 4 ETF = 4 appels/jour.
+    # tier gratuit EODHD limite a 20 appels/jour, 6 actifs = 6 appels/jour.
     - cron: "0 18 * * 1-5"
   workflow_dispatch: {}
 
