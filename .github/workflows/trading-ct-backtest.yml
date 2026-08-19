@@ -11,6 +11,7 @@ on:
         options:
           - backtest_stocks.py
           - backtest_drawdown_stocks.py
+          - backtest_eu.py
       symbols:
         description: "Symboles a backtester, separes par des espaces"
         required: false
@@ -38,4 +39,7 @@ jobs:
         env:
           ALPACA_API_KEY_ID: ${{ secrets.ALPACA_API_KEY_ID }}
           ALPACA_API_SECRET_KEY: ${{ secrets.ALPACA_API_SECRET_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          EODHD_API_TOKEN: ${{ secrets.EODHD_API_TOKEN }}
         run: python ${{ github.event.inputs.script }} ${{ github.event.inputs.symbols }}
