@@ -5,12 +5,13 @@ EODHD est limite a 20 appels API/jour, donc ce fichier est volontairement
 tenu court (4 symboles = 4 appels/jour).
 
 Format des symboles : <TICKER>.<EXCHANGE_CODE> tel qu'attendu par l'API
-EODHD (ex. VVSM.XETRA, HNSC.DE) -- verifie manuellement par l'utilisateur.
+EODHD, verifie via /api/search/<query> (ex. HNSC n'existe chez EODHD que
+sous HNSC.LSE, pas sous un code Xetra, malgre la cotation Xetra d'origine).
 """
 
 EU_WATCHLIST = [
     {"symbol": "VVSM.XETRA", "display": "VanEck Semiconductor UCITS ETF"},
     {"symbol": "NUKL.XETRA", "display": "VanEck Uranium & Nuclear Technologies UCITS ETF"},
     {"symbol": "SEC0.XETRA", "display": "iShares MSCI Global Semiconductors UCITS ETF"},
-    {"symbol": "HNSC.DE", "display": "HSBC Nasdaq Global Semiconductor UCITS ETF"},
+    {"symbol": "HNSC.LSE", "display": "HSBC Nasdaq Global Semiconductor UCITS ETF"},
 ]
