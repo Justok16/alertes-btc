@@ -17,4 +17,9 @@ WATCHLIST = [
     {"symbol": "ETHUSDT", "display": "Ethereum", "asset_class": "crypto"},
     {"symbol": "SPY", "display": "S&P 500 ETF", "asset_class": "etf"},
     {"symbol": "QQQ", "display": "Nasdaq 100 ETF", "asset_class": "etf"},
+    {"symbol": "SMH", "display": "VanEck Semiconductor ETF", "asset_class": "etf"},
+    {"symbol": "SOXX", "display": "iShares Semiconductor ETF", "asset_class": "etf"},
+    {"symbol": "XSD", "display": "SPDR S&P Semiconductor ETF (equal-weight)", "asset_class": "etf"},
+    {"symbol": "SOXQ", "display": "Invesco PHLX Semiconductor ETF", "asset_class": "etf"},
+    {"symbol": "PSI", "display": "Invesco Dynamic Semiconductors ETF", "asset_class": "etf"},
 ]
