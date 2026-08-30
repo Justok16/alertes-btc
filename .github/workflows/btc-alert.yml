@@ -6,6 +6,15 @@ on:
     - cron: "0 8 * * *"
   workflow_dispatch: {}
 
+# Audit du 30/08/2026 : meme garde-fou que trading-ct-alert.yml/
+# trading-ct-eu-alert.yml (backporte apres coup, oublie a la creation de ce
+# workflow) -- empeche deux executions de tourner en parallele (cron +
+# declenchement manuel proches dans le temps), sans quoi la 2e echouait en
+# tentant de pousser state.json alors que la 1ere venait deja de pousser.
+concurrency:
+  group: btc-alert
+  cancel-in-progress: false
+
 jobs:
   check-btc-momentum:
     runs-on: ubuntu-latest
@@ -35,4 +44,5 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add state.json
           git diff --staged --quiet || git commit -m "Update BTC momentum state"
+          git pull --rebase origin main
           git push

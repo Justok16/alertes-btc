@@ -166,15 +166,32 @@ def fetch_coingecko_signal():
         return None, None
 
 
+_ETAT_PAR_DEFAUT = {"alternative_zone": "neutral", "coingecko_zone": "neutral",
+                    "cmc_zone": "neutral", "combined_state": "neutral"}
+
+
 def load_state():
+    # Audit du 30/08/2026 : un fichier corrompu/tronque (ex. process tue en
+    # plein ecriture, cf. save_state ci-dessous avant son propre correctif)
+    # faisait planter tout le script avant meme d'atteindre les try/except
+    # qui protegent le reste -- repli sur l'etat neutre par defaut plutot
+    # qu'un crash, au pire une alerte deja connue est reenvoyee une fois.
     if STATE_FILE.exists():
-        return json.loads(STATE_FILE.read_text(encoding="utf-8"))
-    return {"alternative_zone": "neutral", "coingecko_zone": "neutral",
-            "cmc_zone": "neutral", "combined_state": "neutral"}
+        try:
+            return json.loads(STATE_FILE.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError, ValueError) as e:
+            print(f"[state] fichier illisible ({e}) -- repli sur l'etat neutre par defaut.", file=sys.stderr)
+            return dict(_ETAT_PAR_DEFAUT)
+    return dict(_ETAT_PAR_DEFAUT)
 
 
 def save_state(state):
-    STATE_FILE.write_text(json.dumps(state, indent=2, ensure_ascii=False), encoding="utf-8")
+    # Ecriture ATOMIQUE (fichier temporaire + remplacement) -- un process
+    # tue en plein milieu (timeout GitHub Actions) ne peut plus laisser
+    # state.json tronque, ce qui ferait planter load_state() au run suivant.
+    tmp = STATE_FILE.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(state, indent=2, ensure_ascii=False), encoding="utf-8")
+    os.replace(tmp, STATE_FILE)
 
 
 def send_telegram(message):

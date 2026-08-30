@@ -42,4 +42,12 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           EODHD_API_TOKEN: ${{ secrets.EODHD_API_TOKEN }}
-        run: python ${{ github.event.inputs.script }} ${{ github.event.inputs.symbols }}
+          # Audit du 30/08/2026 : SCRIPT/SYMBOLS passes via env (jamais
+          # interpoles directement dans le run: shell) -- meme correctif
+          # que le depot pokedeals. `symbols` est un input texte libre
+          # (pas de type: choice), donc injectable dans un `run:` naif
+          # (ex. "SPY; curl ... $ALPACA_API_SECRET_KEY") ; `script` est
+          # deja contraint par type: choice mais traite pareil par prudence.
+          SCRIPT: ${{ github.event.inputs.script }}
+          SYMBOLS: ${{ github.event.inputs.symbols }}
+        run: python "$SCRIPT" $SYMBOLS

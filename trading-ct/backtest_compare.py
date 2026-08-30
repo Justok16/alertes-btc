@@ -4,10 +4,16 @@ Backteste en detail quelques variantes retenues apres le balayage
 depart pour toutes les variantes + buy & hold) pour visualisation.
 
 Variantes comparees :
-  - "Prod actuelle"      : RSI/MACD 15/85, F&G crypto <=10/>=85 (asymetrique),
-                            unanimite -- config exacte de trading_alert.py
-  - "15/85 uniforme"      : memes seuils 15/85 mais appliques aussi au F&G
-                            (au lieu de 10/85), unanimite
+  - "Prod actuelle"      : RSI/MACD 15/85, F&G crypto = memes seuils que
+                            trading_alert.py au moment de l'execution
+                            (FNG_CRYPTO_BUY/FNG_CRYPTO_SELL importes
+                            directement, jamais recopies en dur ici -- cf.
+                            correctif du 30/08/2026, l'ancien commentaire
+                            affichait encore "10/85" alors que la prod etait
+                            deja passee a 15/85, seul le libelle etait perime)
+  - "15/85 uniforme"      : memes seuils 15/85 appliques aussi au F&G
+                            (au lieu des seuils F&G reels de la prod),
+                            unanimite
   - "20/80 uniforme"      : seuils assouplis, unanimite
   - "15/85 majoritaire"   : seuils stricts mais vote a 2/3 (comme le bot BTC
                             historique) au lieu de l'unanimite
@@ -26,7 +32,11 @@ from trading_alert import (  # noqa: E402
 )
 
 VARIANTS = [
-    {"name": "Prod actuelle (10/85 F&G, unanimite)", "rsi": (RSI_BUY, RSI_SELL), "macd": (MACD_BUY, MACD_SELL),
+    # Libelle construit a partir des constantes importees (jamais recopie en
+    # dur) -- corrige le 30/08/2026 : l'ancien libelle statique "10/85"
+    # avait derive de la vraie valeur de prod (passee a 15/85) sans que
+    # personne ne s'en aperçoive, le calcul lui-meme restant correct.
+    {"name": f"Prod actuelle ({FNG_CRYPTO_BUY}/{FNG_CRYPTO_SELL} F&G, unanimite)", "rsi": (RSI_BUY, RSI_SELL), "macd": (MACD_BUY, MACD_SELL),
      "fng": (FNG_CRYPTO_BUY, FNG_CRYPTO_SELL), "mode": "unanimous"},
     {"name": "15/85 uniforme, unanimite", "rsi": (15, 85), "macd": (15, 85), "fng": (15, 85), "mode": "unanimous"},
     {"name": "20/80 uniforme, unanimite", "rsi": (20, 80), "macd": (20, 80), "fng": (20, 80), "mode": "unanimous"},

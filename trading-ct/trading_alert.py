@@ -212,13 +212,26 @@ def is_us_market_open():
 
 
 def load_state():
+    # Audit du 30/08/2026 : un fichier corrompu/tronque faisait planter tout
+    # le script avant meme d'atteindre les try/except qui protegent le
+    # reste -- repli sur un etat vide plutot qu'un crash (meme correctif
+    # que btc_alert.py), au pire un signal deja connu est reenvoye une fois.
     if STATE_FILE.exists():
-        return json.loads(STATE_FILE.read_text(encoding="utf-8"))
+        try:
+            return json.loads(STATE_FILE.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError, ValueError) as e:
+            print(f"[state] fichier illisible ({e}) -- repli sur un etat vide.", file=sys.stderr)
+            return {}
     return {}
 
 
 def save_state(state):
-    STATE_FILE.write_text(json.dumps(state, indent=2, ensure_ascii=False), encoding="utf-8")
+    # Ecriture ATOMIQUE (fichier temporaire + remplacement) -- un process
+    # tue en plein milieu (timeout GitHub Actions) ne peut plus laisser
+    # state.json tronque, ce qui ferait planter load_state() au run suivant.
+    tmp = STATE_FILE.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(state, indent=2, ensure_ascii=False), encoding="utf-8")
+    os.replace(tmp, STATE_FILE)
 
 
 def send_telegram(message):
@@ -319,12 +332,19 @@ def main():
                 send_telegram(build_message(result))
                 print(f"Alerte envoyee pour {symbol}: {result['combined']}")
             except Exception as e:
-                # Meme garde-fou que le bot BTC : si Telegram echoue, on ne
-                # met pas a jour l'etat de ce symbole pour retenter au run
-                # suivant plutot que de perdre le signal silencieusement.
+                # Audit du 30/08/2026 : ce `continue` sautait la mise a jour
+                # de l'etat, PRECISEMENT le comportement que le bot BTC a ete
+                # corrige pour eviter (cf. btc_alert.py) -- avec un cron
+                # toutes les 5 min (contre 1x/jour pour le bot BTC), une
+                # panne Telegram meme courte faisait retenter LE MEME signal
+                # a chaque run (spam de tentatives + job rouge en boucle sur
+                # GitHub Actions) plutot qu'une fois. On aligne desormais sur
+                # le bot BTC : l'etat est TOUJOURS mis a jour (le signal
+                # "consomme" cette transition une seule fois, meme en cas
+                # d'echec Telegram), alerte_echouee fait juste echouer le job
+                # pour que l'echec reste visible.
                 print(f"[telegram] echec de l'envoi pour {symbol}: {e}", file=sys.stderr)
                 alerte_echouee = True
-                continue
         else:
             print(f"{symbol}: pas d'alerte (etat={result['combined']}, precedent={previous})")
 

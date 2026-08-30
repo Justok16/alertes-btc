@@ -58,13 +58,26 @@ def fetch_eodhd_closes(symbol, history_days=200):
 
 
 def load_state():
+    # Audit du 30/08/2026 : un fichier corrompu/tronque faisait planter tout
+    # le script avant meme d'atteindre les try/except qui protegent le
+    # reste -- repli sur un etat vide plutot qu'un crash (meme correctif
+    # que btc_alert.py), au pire un signal deja connu est reenvoye une fois.
     if STATE_FILE.exists():
-        return json.loads(STATE_FILE.read_text(encoding="utf-8"))
+        try:
+            return json.loads(STATE_FILE.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError, ValueError) as e:
+            print(f"[state] fichier illisible ({e}) -- repli sur un etat vide.", file=sys.stderr)
+            return {}
     return {}
 
 
 def save_state(state):
-    STATE_FILE.write_text(json.dumps(state, indent=2, ensure_ascii=False), encoding="utf-8")
+    # Ecriture ATOMIQUE (fichier temporaire + remplacement) -- un process
+    # tue en plein milieu (timeout GitHub Actions) ne peut plus laisser
+    # eu_state.json tronque, ce qui ferait planter load_state() au run suivant.
+    tmp = STATE_FILE.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(state, indent=2, ensure_ascii=False), encoding="utf-8")
+    os.replace(tmp, STATE_FILE)
 
 
 def build_message(result):
@@ -140,9 +153,14 @@ def main():
                 send_telegram(build_message(result))
                 print(f"Alerte envoyee pour {symbol}: {result['combined']}")
             except Exception as e:
+                # Audit du 30/08/2026 (meme correctif que trading_alert.py) :
+                # l'ancien `continue` sautait la mise a jour de l'etat --
+                # avec un cron toutes les 5 min, une panne Telegram meme
+                # courte faisait retenter LE MEME signal a chaque run. On
+                # aligne sur btc_alert.py : l'etat est TOUJOURS mis a jour,
+                # alerte_echouee fait juste echouer le job pour visibilite.
                 print(f"[telegram] echec de l'envoi pour {symbol}: {e}", file=sys.stderr)
                 alerte_echouee = True
-                continue
         else:
             print(f"{symbol}: pas d'alerte (etat={result['combined']}, precedent={previous})")
 
