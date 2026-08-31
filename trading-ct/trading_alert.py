@@ -54,6 +54,18 @@ ALTERNATIVE_FNG_URL = "https://api.alternative.me/fng/?limit=1"
 
 HTTP_TIMEOUT = 15
 
+# Audit du 31/08/2026 : fetch_binance_closes() renvoie None sur echec sans
+# jamais impacter le code de sortie -- si Binance est en panne durable
+# (endpoint change, rate-limit permanent...), TOUS les symboles crypto de
+# WATCHLIST echouent a chaque cycle, silencieusement, et le job GitHub
+# Actions reste vert indefiniment (contrairement a une panne Alpaca : les
+# actifs "stock"/"etf" sont deja legitimement ignores hors horaires de
+# marche US, donc pas de signal fiable a distinguer d'un vrai echec --
+# seul le cas crypto, actif en continu, est traite ici pour eviter tout
+# faux positif). Cron toutes les 5 min : 12 echecs consecutifs = ~1h de
+# panne avant d'alerter, memes principes que btc_alert.py.
+SEUIL_ECHECS_CRYPTO_CONSECUTIFS = 12
+
 
 def get_with_retry(url, params=None, headers=None, retries=3, backoff=15):
     """GET avec retry en cas de 429 (rate limit) ou d'erreur reseau transitoire."""
@@ -319,9 +331,13 @@ def main():
     print(f"Fear & Greed crypto global: {crypto_fng}")
 
     alerte_echouee = False
+    items_crypto = [i for i in WATCHLIST if i["asset_class"] == "crypto"]
+    echecs_crypto = 0
     for item in WATCHLIST:
         result = evaluate_symbol(item, crypto_fng)
         if result is None:
+            if item["asset_class"] == "crypto":
+                echecs_crypto += 1
             continue
 
         symbol = result["symbol"]
@@ -349,6 +365,34 @@ def main():
             print(f"{symbol}: pas d'alerte (etat={result['combined']}, precedent={previous})")
 
         state[symbol] = {"combined_state": result["combined"]}
+
+    # cf. SEUIL_ECHECS_CRYPTO_CONSECUTIFS plus haut. `_meta` : cle reservee,
+    # ne peut jamais collisionner avec un symbole (toujours en majuscules).
+    meta = state.setdefault("_meta", {"echecs_crypto_consecutifs": 0, "alerte_panne_crypto_envoyee": False})
+    panne_crypto_ce_cycle = bool(items_crypto) and echecs_crypto == len(items_crypto)
+    if panne_crypto_ce_cycle:
+        meta["echecs_crypto_consecutifs"] = meta.get("echecs_crypto_consecutifs", 0) + 1
+    else:
+        meta["echecs_crypto_consecutifs"] = 0
+
+    if (meta["echecs_crypto_consecutifs"] >= SEUIL_ECHECS_CRYPTO_CONSECUTIFS
+            and not meta.get("alerte_panne_crypto_envoyee")):
+        try:
+            send_telegram(
+                "⚡ <b>Trading CT</b> — ⚠️ Données crypto (Binance) indisponibles\n"
+                f"Échec sur {', '.join(i['symbol'] for i in items_crypto)} depuis "
+                f"{meta['echecs_crypto_consecutifs']} cycles d'affilée : plus aucun signal crypto "
+                "n'est possible tant que ce n'est pas résolu."
+            )
+            meta["alerte_panne_crypto_envoyee"] = True
+        except Exception as e:
+            print(f"[telegram] echec de l'alerte de panne crypto: {e}", file=sys.stderr)
+    elif not panne_crypto_ce_cycle and meta.get("alerte_panne_crypto_envoyee"):
+        try:
+            send_telegram("⚡ <b>Trading CT</b> — ✅ Données crypto de nouveau disponibles.")
+        except Exception as e:
+            print(f"[telegram] echec du message de retour au vert: {e}", file=sys.stderr)
+        meta["alerte_panne_crypto_envoyee"] = False
 
     save_state(state)
 

@@ -166,8 +166,24 @@ def fetch_coingecko_signal():
         return None, None
 
 
+# Audit du 31/08/2026 : les 2 sources OBLIGATOIRES (Alternative.me,
+# CoinGecko maison) renvoient (None, None) en cas d'echec sans jamais
+# impacter le code de sortie -- si les deux tombent en panne durablement
+# (cle expiree, endpoint change...) alors que seule la source bonus
+# (CoinMarketCap) fonctionne encore, buy_votes/sell_votes ne peuvent plus
+# JAMAIS atteindre 2 : plus aucune alerte n'est possible, silencieusement,
+# et le job GitHub Actions reste vert indefiniment (aucun echec Python,
+# juste "pas d'alerte ce cycle"). Meme philosophie que
+# verifier_fiabilite_plateformes() cote pokedeals/main.py : alerte
+# UNIQUEMENT apres plusieurs echecs consecutifs (pas un aleas isole), et
+# UNE SEULE FOIS tant que la panne persiste (etat "deja alerte" en
+# memoire), avec un message de retour au vert une fois les sources a
+# nouveau fonctionnelles.
+SEUIL_ECHECS_SOURCES_CONSECUTIFS = 3  # cron quotidien -- 3 jours de panne avant d'alerter
+
 _ETAT_PAR_DEFAUT = {"alternative_zone": "neutral", "coingecko_zone": "neutral",
-                    "cmc_zone": "neutral", "combined_state": "neutral"}
+                    "cmc_zone": "neutral", "combined_state": "neutral",
+                    "echecs_sources_consecutifs": 0, "alerte_panne_sources_envoyee": False}
 
 
 def load_state():
@@ -232,6 +248,34 @@ def main():
     print(f"Alternative.me: score={score_alt} zone={zone_alt}")
     print(f"CoinGecko maison: score={score_cg} zone={zone_cg}")
     print(f"CoinMarketCap (bonus): score={score_cmc} zone={zone_cmc}")
+
+    # cf. SEUIL_ECHECS_SOURCES_CONSECUTIFS plus haut : detecte une panne
+    # durable des 2 sources OBLIGATOIRES (sans quoi aucune alerte n'est
+    # plus jamais possible, silencieusement).
+    sources_obligatoires_en_panne = zone_alt is None and zone_cg is None
+    if sources_obligatoires_en_panne:
+        state["echecs_sources_consecutifs"] = state.get("echecs_sources_consecutifs", 0) + 1
+    else:
+        state["echecs_sources_consecutifs"] = 0
+
+    if (state["echecs_sources_consecutifs"] >= SEUIL_ECHECS_SOURCES_CONSECUTIFS
+            and not state.get("alerte_panne_sources_envoyee")):
+        try:
+            send_telegram(
+                "🟠 <b>BTC Alert</b> — ⚠️ Sources de données en panne\n"
+                f"Alternative.me ET CoinGecko échouent depuis {state['echecs_sources_consecutifs']} "
+                "jours d'affilée : plus aucune alerte d'achat/vente n'est possible tant que ce n'est "
+                "pas résolu."
+            )
+            state["alerte_panne_sources_envoyee"] = True
+        except Exception as e:
+            print(f"[telegram] echec de l'alerte de panne sources: {e}", file=sys.stderr)
+    elif not sources_obligatoires_en_panne and state.get("alerte_panne_sources_envoyee"):
+        try:
+            send_telegram("🟠 <b>BTC Alert</b> — ✅ Sources de données de nouveau opérationnelles.")
+        except Exception as e:
+            print(f"[telegram] echec du message de retour au vert: {e}", file=sys.stderr)
+        state["alerte_panne_sources_envoyee"] = False
 
     zones = [z for z in (zone_alt, zone_cg, zone_cmc) if z is not None]
 

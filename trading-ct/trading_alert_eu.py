@@ -36,6 +36,14 @@ EODHD_API_TOKEN = os.environ.get("EODHD_API_TOKEN")
 EODHD_EOD_URL = "https://eodhd.com/api/eod/{symbol}"
 WINDOW = 100
 
+# Audit du 31/08/2026 (meme correctif que btc_alert.py/trading_alert.py) :
+# fetch_eodhd_closes() renvoie None sur echec (cle API invalide, quota
+# epuise, endpoint change...) sans jamais impacter le code de sortie -- si
+# TOUS les ETF de EU_WATCHLIST echouent le meme cycle, c'est le signe d'une
+# panne systemique (tous partagent la meme source EODHD), pas un aleas
+# isole. Cron quotidien jours ouvres : 3 echecs consecutifs avant d'alerter.
+SEUIL_ECHECS_CONSECUTIFS = 3
+
 
 def fetch_eodhd_closes(symbol, history_days=200):
     if not EODHD_API_TOKEN:
@@ -139,10 +147,12 @@ def evaluate_symbol(item):
 def main():
     state = load_state()
     alerte_echouee = False
+    echecs = 0
 
     for item in EU_WATCHLIST:
         result = evaluate_symbol(item)
         if result is None:
+            echecs += 1
             continue
 
         symbol = result["symbol"]
@@ -165,6 +175,34 @@ def main():
             print(f"{symbol}: pas d'alerte (etat={result['combined']}, precedent={previous})")
 
         state[symbol] = {"combined_state": result["combined"]}
+
+    # cf. SEUIL_ECHECS_CONSECUTIFS plus haut. `_meta` : cle reservee, ne
+    # peut jamais collisionner avec un symbole.
+    meta = state.setdefault("_meta", {"echecs_consecutifs": 0, "alerte_panne_envoyee": False})
+    panne_ce_cycle = bool(EU_WATCHLIST) and echecs == len(EU_WATCHLIST)
+    if panne_ce_cycle:
+        meta["echecs_consecutifs"] = meta.get("echecs_consecutifs", 0) + 1
+    else:
+        meta["echecs_consecutifs"] = 0
+
+    if (meta["echecs_consecutifs"] >= SEUIL_ECHECS_CONSECUTIFS
+            and not meta.get("alerte_panne_envoyee")):
+        try:
+            send_telegram(
+                "🇪🇺 <b>Trading CT — ETF Europe</b> — ⚠️ Données EODHD indisponibles\n"
+                f"Échec sur tous les ETF suivis depuis {meta['echecs_consecutifs']} cycles d'affilée "
+                "(clé API invalide, quota épuisé, endpoint changé...) : plus aucun signal n'est "
+                "possible tant que ce n'est pas résolu."
+            )
+            meta["alerte_panne_envoyee"] = True
+        except Exception as e:
+            print(f"[telegram] echec de l'alerte de panne: {e}", file=sys.stderr)
+    elif not panne_ce_cycle and meta.get("alerte_panne_envoyee"):
+        try:
+            send_telegram("🇪🇺 <b>Trading CT — ETF Europe</b> — ✅ Données EODHD de nouveau disponibles.")
+        except Exception as e:
+            print(f"[telegram] echec du message de retour au vert: {e}", file=sys.stderr)
+        meta["alerte_panne_envoyee"] = False
 
     save_state(state)
 
