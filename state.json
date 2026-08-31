@@ -2,5 +2,6 @@
   "alternative_zone": "neutral",
   "coingecko_zone": "neutral",
   "cmc_zone": "neutral",
-  "combined_state": "neutral"
+  "combined_state": "neutral",
+  "echecs_sources_consecutifs": 0
 }
