@@ -18,7 +18,7 @@ donnee partagee entre actifs a telecharger separement.
 import os
 import sys
 import time
-from datetime import date, datetime, timezone
+from datetime import datetime
 from pathlib import Path
 
 import requests

@@ -1,0 +1,23 @@
+version: 2
+updates:
+  # Ajouté le 31/08/2026 : aucune surveillance de dépendances jusqu'ici.
+  # Une PR par mise à jour, vérifiée par la CI (cf. .github/workflows/ci.yml)
+  # avant tout merge -- jamais de mise à jour silencieuse. Deux requirements.txt
+  # distincts dans ce repo (racine + trading-ct/), surveillés séparément.
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: "pip"
+    directory: "/trading-ct"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5

@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# Ajouté le 31/08/2026 : ce repo n'avait jusqu'ici AUCUNE vérification
+# automatisée (pas de CI du tout) -- toute régression ne pouvait être
+# détectée qu'au prochain passage manuel des bots en prod. Pas de suite de
+# tests ici -- on se limite donc à pyflakes (imports inutilisés, variables
+# non définies, erreurs de syntaxe) sur btc_alert.py et trading-ct/, gratuit
+# et sans appel réseau. N'a besoin que de lire le code.
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Récupérer le code
+        uses: actions/checkout@v4
+      - name: Installer Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Installer pyflakes
+        run: pip install pyflakes
+      - name: Analyse statique (pyflakes)
+        run: pyflakes btc_alert.py trading-ct/*.py

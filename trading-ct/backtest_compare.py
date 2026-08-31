@@ -53,7 +53,6 @@ def run_variant_detailed(closes, dates, fng_by_date, variant, data_start_idx):
     equity_realized = 100.0
     entry_price = None
     equity_at_entry = None
-    base_price = closes[data_start_idx]
 
     for i in range(len(closes)):
         if i + 1 < WINDOW:

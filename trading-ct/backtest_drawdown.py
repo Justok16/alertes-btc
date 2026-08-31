@@ -11,7 +11,6 @@ jour ou il le FRANCHIT, comme le state-change des autres bots du repo).
 """
 
 import sys
-from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
