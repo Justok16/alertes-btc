@@ -31,5 +31,9 @@
   },
   "SMHC": {
     "combined_state": "neutral"
+  },
+  "_meta": {
+    "echecs_crypto_consecutifs": 0,
+    "alerte_panne_crypto_envoyee": false
   }
 }
