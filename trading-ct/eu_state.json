@@ -16,5 +16,9 @@
   },
   "512480.SHG": {
     "combined_state": "neutral"
+  },
+  "_meta": {
+    "echecs_consecutifs": 0,
+    "alerte_panne_envoyee": false
   }
 }
