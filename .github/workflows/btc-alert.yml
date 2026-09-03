@@ -44,5 +44,19 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add state.json
           git diff --staged --quiet || git commit -m "Update BTC momentum state"
-          git pull --rebase origin main
-          git push
+          # Audit du 03/09/2026 : le concurrency guard ci-dessus empeche deux
+          # executions de CE workflow de tourner en meme temps, mais pas un
+          # push venant d'ailleurs (autre workflow, commit manuel) pile entre
+          # notre rebase et notre push, ni un hoquet transitoire de l'API
+          # GitHub -- avant ce correctif, un seul echec de push faisait
+          # passer tout le job au rouge et perdait la mise a jour d'etat de
+          # ce cycle. On retente quelques fois avant d'abandonner pour de bon.
+          for i in 1 2 3; do
+            git pull --rebase origin main && git push && break
+            git rebase --abort 2>/dev/null || true
+            if [ "$i" -eq 3 ]; then
+              echo "Echec du push apres 3 tentatives" >&2
+              exit 1
+            fi
+            sleep 5
+          done
