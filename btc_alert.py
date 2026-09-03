@@ -38,14 +38,14 @@ TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
 HTTP_TIMEOUT = 15
 
 
-def get_with_retry(url, params=None, headers=None, retries=3, backoff=20):
+def get_with_retry(session, url, params=None, headers=None, retries=3, backoff=20):
     """GET avec retry en cas de 429 (rate limit), frequent sur les API publiques
     gratuites partagees par IP. En usage 1x/jour, quelques secondes d'attente
     suffisent generalement a passer le pic de trafic partage."""
     last_exc = None
     for attempt in range(retries):
         try:
-            r = requests.get(url, params=params, headers=headers, timeout=HTTP_TIMEOUT)
+            r = session.get(url, params=params, headers=headers, timeout=HTTP_TIMEOUT)
             if r.status_code == 429 and attempt < retries - 1:
                 time.sleep(backoff * (attempt + 1))
                 continue
@@ -69,10 +69,10 @@ def classify(score):
     return "neutral"
 
 
-def fetch_alternative_fng():
+def fetch_alternative_fng(session):
     """Source obligatoire 1 : Alternative.me Fear & Greed Index."""
     try:
-        r = get_with_retry("https://api.alternative.me/fng/?limit=1")
+        r = get_with_retry(session, "https://api.alternative.me/fng/?limit=1")
         data = r.json()["data"][0]
         score = int(data["value"])
         return score, classify(score)
@@ -81,10 +81,11 @@ def fetch_alternative_fng():
         return None, None
 
 
-def fetch_cmc_fng():
+def fetch_cmc_fng(session):
     """Source bonus (non bloquante) : CoinMarketCap F&G, endpoint keyless."""
     try:
         r = get_with_retry(
+            session,
             "https://pro-api.coinmarketcap.com/public-api/v3/fear-and-greed/latest",
             headers={"Accept": "application/json"},
             retries=1,
@@ -123,10 +124,11 @@ def weekly_closes_from_daily(daily_prices):
     return weekly
 
 
-def fetch_coingecko_signal():
+def fetch_coingecko_signal(session):
     """Source obligatoire 2 : calcul maison via CoinGecko (gratuit, sans cle)."""
     try:
         r = get_with_retry(
+            session,
             "https://api.coingecko.com/api/v3/coins/bitcoin",
             params={
                 "localization": "false",
@@ -142,8 +144,28 @@ def fetch_coingecko_signal():
         ath_distance_pct = (current_price - ath) / ath * 100  # negatif si sous l'ATH
 
         r2 = get_with_retry(
+            session,
             "https://api.coingecko.com/api/v3/coins/bitcoin/market_chart",
-            # CoinGecko limite l'historique gratuit sans cle API a 365 jours
+            # CoinGecko limite l'historique gratuit sans cle API a 365 jours.
+            # Audit du 03/09/2026 : NE PAS reduire ce parametre pour economiser
+            # de la bande passante, meme si le RSI hebdo n'utilise en pratique
+            # que les ~15 dernieres cloture hebdo. weekly_closes_from_daily()
+            # regroupe le tableau recu en semaines de 7 EN PARTANT DU DEBUT
+            # (le jour le plus ANCIEN), pas de la fin -- verifie par
+            # simulation (tableau synthetique, chunking rejoue avec plusieurs
+            # longueurs totales) : reduire `days` decale l'alignement des
+            # semaines des que la longueur totale du tableau change de reste
+            # modulo 7, ce qui change silencieusement les clotures hebdo
+            # utilisees par le RSI (donc le score final) pour la quasi
+            # totalite des valeurs de `days` testees -- et ce reste modulo 7
+            # n'est meme pas stable pour une valeur de `days` fixe (CoinGecko
+            # peut renvoyer 365 ou 366 points selon l'heure UTC exacte de
+            # l'appel, selon qu'il inclut ou non la bougie du jour en cours).
+            # Reduire ce payload sans risquer un score errone necessiterait de
+            # reecrire weekly_closes_from_daily() pour ancrer le decoupage sur
+            # le jour le plus RECENT (fin du tableau) plutot que le plus
+            # ancien -- hors perimetre de ce correctif, qui doit rester une
+            # pure optimisation a sortie identique.
             params={"vs_currency": "usd", "days": "365"},
         )
         daily_prices = r2.json()["prices"]
@@ -210,12 +232,12 @@ def save_state(state):
     os.replace(tmp, STATE_FILE)
 
 
-def send_telegram(message):
+def send_telegram(session, message):
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         print("Secrets Telegram manquants, message non envoye:\n" + message)
         return
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-    r = requests.post(
+    r = session.post(
         url,
         json={"chat_id": TELEGRAM_CHAT_ID, "text": message, "parse_mode": "HTML"},
         timeout=HTTP_TIMEOUT,
@@ -240,10 +262,16 @@ def build_message(direction, score_alt, score_cg, score_cmc):
 
 def main():
     state = load_state()
+    # Audit du 03/09/2026 : une seule Session() reutilisee pour tout le run
+    # (au lieu d'un requests.get/post independant par appel) garde la
+    # connexion TCP/TLS ouverte entre les appels vers un meme hote --
+    # reduction du overhead reseau, gratuite et sans risque (script mono-thread
+    # a ce niveau, aucun etat mute sur la session en cours de route).
+    session = requests.Session()
 
-    score_alt, zone_alt = fetch_alternative_fng()
-    score_cg, zone_cg = fetch_coingecko_signal()
-    score_cmc, zone_cmc = fetch_cmc_fng()
+    score_alt, zone_alt = fetch_alternative_fng(session)
+    score_cg, zone_cg = fetch_coingecko_signal(session)
+    score_cmc, zone_cmc = fetch_cmc_fng(session)
 
     print(f"Alternative.me: score={score_alt} zone={zone_alt}")
     print(f"CoinGecko maison: score={score_cg} zone={zone_cg}")
@@ -262,6 +290,7 @@ def main():
             and not state.get("alerte_panne_sources_envoyee")):
         try:
             send_telegram(
+                session,
                 "🟠 <b>BTC Alert</b> — ⚠️ Sources de données en panne\n"
                 f"Alternative.me ET CoinGecko échouent depuis {state['echecs_sources_consecutifs']} "
                 "jours d'affilée : plus aucune alerte d'achat/vente n'est possible tant que ce n'est "
@@ -272,7 +301,7 @@ def main():
             print(f"[telegram] echec de l'alerte de panne sources: {e}", file=sys.stderr)
     elif not sources_obligatoires_en_panne and state.get("alerte_panne_sources_envoyee"):
         try:
-            send_telegram("🟠 <b>BTC Alert</b> — ✅ Sources de données de nouveau opérationnelles.")
+            send_telegram(session, "🟠 <b>BTC Alert</b> — ✅ Sources de données de nouveau opérationnelles.")
         except Exception as e:
             print(f"[telegram] echec du message de retour au vert: {e}", file=sys.stderr)
         state["alerte_panne_sources_envoyee"] = False
@@ -303,7 +332,7 @@ def main():
     if combined_state in ("buy", "sell") and combined_state != previous_combined:
         message = build_message(combined_state, score_alt, score_cg, score_cmc)
         try:
-            send_telegram(message)
+            send_telegram(session, message)
             print("Alerte envoyee:", combined_state)
         except Exception as e:
             print(f"[telegram] echec de l'envoi: {e}", file=sys.stderr)

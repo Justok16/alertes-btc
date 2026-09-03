@@ -19,6 +19,7 @@ Ceci est un outil de signal technique, PAS un conseil en investissement.
 Aucune execution d'ordre n'est faite par ce script.
 """
 
+import concurrent.futures
 import json
 import os
 import sys
@@ -67,12 +68,12 @@ HTTP_TIMEOUT = 15
 SEUIL_ECHECS_CRYPTO_CONSECUTIFS = 12
 
 
-def get_with_retry(url, params=None, headers=None, retries=3, backoff=15):
+def get_with_retry(session, url, params=None, headers=None, retries=3, backoff=15):
     """GET avec retry en cas de 429 (rate limit) ou d'erreur reseau transitoire."""
     last_exc = None
     for attempt in range(retries):
         try:
-            r = requests.get(url, params=params, headers=headers, timeout=HTTP_TIMEOUT)
+            r = session.get(url, params=params, headers=headers, timeout=HTTP_TIMEOUT)
             if r.status_code == 429 and attempt < retries - 1:
                 time.sleep(backoff * (attempt + 1))
                 continue
@@ -172,21 +173,24 @@ def home_score(closes):
     return round((rsi14 + stoch14) / 2, 1)
 
 
-def fetch_binance_closes(symbol, interval="15m", limit=100):
+def fetch_binance_closes(session, symbol, interval="15m", limit=100):
     try:
-        r = get_with_retry(BINANCE_KLINES_URL, params={"symbol": symbol, "interval": interval, "limit": limit})
+        r = get_with_retry(
+            session, BINANCE_KLINES_URL, params={"symbol": symbol, "interval": interval, "limit": limit}
+        )
         return [float(k[4]) for k in r.json()]
     except Exception as e:
         print(f"[binance] echec pour {symbol}: {e}", file=sys.stderr)
         return None
 
 
-def fetch_alpaca_closes(symbol, timeframe="15Min", limit=100):
+def fetch_alpaca_closes(session, symbol, timeframe="15Min", limit=100):
     if not ALPACA_API_KEY_ID or not ALPACA_API_SECRET_KEY:
         print(f"[alpaca] cles API manquantes, {symbol} ignore", file=sys.stderr)
         return None
     try:
         r = get_with_retry(
+            session,
             ALPACA_BARS_URL.format(symbol=symbol),
             # adjustment=split : evite qu'un split boursier apparaisse comme
             # un faux krach du prix dans les 100 dernieres bougies
@@ -201,10 +205,10 @@ def fetch_alpaca_closes(symbol, timeframe="15Min", limit=100):
         return None
 
 
-def fetch_crypto_fng():
+def fetch_crypto_fng(session):
     """Fear & Greed Index crypto global (Alternative.me), partage par tous les symboles crypto."""
     try:
-        r = get_with_retry(ALTERNATIVE_FNG_URL)
+        r = get_with_retry(session, ALTERNATIVE_FNG_URL)
         return int(r.json()["data"][0]["value"])
     except Exception as e:
         print(f"[alternative.me] echec: {e}", file=sys.stderr)
@@ -246,12 +250,12 @@ def save_state(state):
     os.replace(tmp, STATE_FILE)
 
 
-def send_telegram(message):
+def send_telegram(session, message):
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         print("Secrets Telegram manquants, message non envoye:\n" + message)
         return
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-    r = requests.post(
+    r = session.post(
         url,
         json={"chat_id": TELEGRAM_CHAT_ID, "text": message, "parse_mode": "HTML"},
         timeout=HTTP_TIMEOUT,
@@ -276,19 +280,19 @@ def build_message(result):
     return "\n".join(lines)
 
 
-def evaluate_symbol(item, crypto_fng_score):
+def evaluate_symbol(session, item, crypto_fng_score):
     symbol = item["symbol"]
     asset_class = item["asset_class"]
 
     if asset_class == "crypto":
-        closes = fetch_binance_closes(symbol)
+        closes = fetch_binance_closes(session, symbol)
         fng_score = crypto_fng_score
         fng_zone = classify(fng_score, FNG_CRYPTO_BUY, FNG_CRYPTO_SELL)
     else:
         if not is_us_market_open():
             print(f"{symbol}: marche US ferme, verification ignoree")
             return None
-        closes = fetch_alpaca_closes(symbol)
+        closes = fetch_alpaca_closes(session, symbol)
         fng_score = home_score(closes) if closes else None
         fng_zone = classify(fng_score, HOME_BUY, HOME_SELL)
 
@@ -327,14 +331,40 @@ def evaluate_symbol(item, crypto_fng_score):
 
 def main():
     state = load_state()
-    crypto_fng = fetch_crypto_fng()
+    # Audit du 03/09/2026 : une seule Session() reutilisee pour tout le run
+    # (au lieu d'un requests.get/post independant par appel) garde la
+    # connexion TCP/TLS ouverte entre les appels vers un meme hote. Partagee
+    # entre les threads ci-dessous : sans risque, on ne mute jamais d'etat
+    # dessus (pas de session.headers modifie en cours de route) -- le pool de
+    # connexions sous-jacent (urllib3) est lui-meme thread-safe.
+    session = requests.Session()
+    crypto_fng = fetch_crypto_fng(session)
     print(f"Fear & Greed crypto global: {crypto_fng}")
 
     alerte_echouee = False
     items_crypto = [i for i in WATCHLIST if i["asset_class"] == "crypto"]
     echecs_crypto = 0
-    for item in WATCHLIST:
-        result = evaluate_symbol(item, crypto_fng)
+
+    # Audit du 03/09/2026 : evaluate_symbol() est un pur calcul (fetch HTTP +
+    # indicateurs) sans aucun effet de bord -- toute mutation d'etat et tout
+    # envoi Telegram n'arrivent qu'apres, sequentiellement, dans la boucle
+    # ci-dessous. Le fetch de chaque symbole (jusqu'a 3 tentatives avec
+    # backoff dans get_with_retry) est justement l'operation la plus lente
+    # et purement I/O-bound (le GIL est relache pendant les appels reseau) :
+    # les paralleliser avec des threads divise le temps total par ~len(WATCHLIST)
+    # au lieu de le cumuler symbole par symbole -- notable avec un cron
+    # toutes les 5 minutes. executor.map() renvoie les resultats dans l'ORDRE
+    # DE SOUMISSION (donc l'ordre de WATCHLIST), pas l'ordre de completion :
+    # la boucle de traitement ci-dessous (alertes, etat, compteur de pannes)
+    # reste donc strictement sequentielle et deterministe, identique a
+    # l'ancienne version. Seul l'entrelacement des logs print() de
+    # evaluate_symbol() (RSI/MACD/F&G par symbole) peut varier d'un run a
+    # l'autre -- purement cosmetique, aucun etat ni alerte n'en depend.
+    max_workers = min(len(WATCHLIST), 10) or 1
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+        results = list(executor.map(lambda item: evaluate_symbol(session, item, crypto_fng), WATCHLIST))
+
+    for item, result in zip(WATCHLIST, results):
         if result is None:
             if item["asset_class"] == "crypto":
                 echecs_crypto += 1
@@ -345,7 +375,7 @@ def main():
 
         if result["combined"] in ("buy", "sell") and result["combined"] != previous:
             try:
-                send_telegram(build_message(result))
+                send_telegram(session, build_message(result))
                 print(f"Alerte envoyee pour {symbol}: {result['combined']}")
             except Exception as e:
                 # Audit du 30/08/2026 : ce `continue` sautait la mise a jour
@@ -379,6 +409,7 @@ def main():
             and not meta.get("alerte_panne_crypto_envoyee")):
         try:
             send_telegram(
+                session,
                 "⚡ <b>Trading CT</b> — ⚠️ Données crypto (Binance) indisponibles\n"
                 f"Échec sur {', '.join(i['symbol'] for i in items_crypto)} depuis "
                 f"{meta['echecs_crypto_consecutifs']} cycles d'affilée : plus aucun signal crypto "
@@ -389,7 +420,7 @@ def main():
             print(f"[telegram] echec de l'alerte de panne crypto: {e}", file=sys.stderr)
     elif not panne_crypto_ce_cycle and meta.get("alerte_panne_crypto_envoyee"):
         try:
-            send_telegram("⚡ <b>Trading CT</b> — ✅ Données crypto de nouveau disponibles.")
+            send_telegram(session, "⚡ <b>Trading CT</b> — ✅ Données crypto de nouveau disponibles.")
         except Exception as e:
             print(f"[telegram] echec du message de retour au vert: {e}", file=sys.stderr)
         meta["alerte_panne_crypto_envoyee"] = False
