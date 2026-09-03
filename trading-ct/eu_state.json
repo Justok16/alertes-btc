@@ -18,7 +18,7 @@
     "combined_state": "neutral"
   },
   "_meta": {
-    "echecs_consecutifs": 0,
+    "echecs_consecutifs": 1,
     "alerte_panne_envoyee": false
   }
 }
