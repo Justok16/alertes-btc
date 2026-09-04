@@ -21,11 +21,21 @@ from pathlib import Path
 
 import requests
 
+import memoire_supabase
+
 # Evite les crashs d'encodage sur console Windows (cp1252) quand on affiche des emojis
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 STATE_FILE = Path(__file__).parent / "state.json"
+
+# Migration du 04/09/2026 (audit externe) : etat persiste dans Supabase
+# plutot que commite en Git a chaque cycle -- cf. memoire_supabase.py pour
+# le detail. Repli automatique sur STATE_FILE si ces secrets sont absents
+# (migration progressive, rien ne casse tant qu'ils ne sont pas ajoutes).
+SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
+SUPABASE_SERVICE_ROLE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
+ETAT_CLE = "btc_alert_state"
 
 # Seuils Fear & Greed (0-100). <= BUY_THRESHOLD => peur extreme => achat
 # >= SELL_THRESHOLD => avidite extreme => vente. Meme rigueur des deux cotes.
@@ -209,6 +219,19 @@ _ETAT_PAR_DEFAUT = {"alternative_zone": "neutral", "coingecko_zone": "neutral",
 
 
 def load_state():
+    # Migration du 04/09/2026 : Supabase d'abord si les secrets sont
+    # configures (cf. memoire_supabase.py) -- l'etat porte la detection de
+    # transition, une lecture ratee doit donc faire ABANDONNER le cycle
+    # (sys.exit) plutot que de repartir silencieusement d'un etat neutre, ce
+    # qui redeclencherait une alerte deja connue. Repli sur STATE_FILE
+    # uniquement si les secrets sont absents (migration pas encore faite).
+    if SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY:
+        etat = memoire_supabase.charger_etat_supabase(ETAT_CLE, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+        if etat is not None:
+            return {**_ETAT_PAR_DEFAUT, **etat}
+        print("[state] Supabase injoignable apres retry -- abandon du cycle.", file=sys.stderr)
+        sys.exit(1)
+
     # Audit du 30/08/2026 : un fichier corrompu/tronque (ex. process tue en
     # plein ecriture, cf. save_state ci-dessous avant son propre correctif)
     # faisait planter tout le script avant meme d'atteindre les try/except
@@ -224,6 +247,17 @@ def load_state():
 
 
 def save_state(state):
+    # Migration du 04/09/2026 : Supabase d'abord si configure -- si l'appel
+    # reussit, STATE_FILE n'est PLUS ecrit du tout (plus rien a committer,
+    # l'etape "Commit updated state" du workflow devient un no-op silencieux
+    # sans avoir besoin d'etre modifiee). Repli fichier uniquement si les
+    # secrets sont absents OU si l'ecriture Supabase a echoue (mieux qu'une
+    # perte totale de l'etat de ce cycle).
+    if SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY:
+        if memoire_supabase.sauvegarder_etat_supabase(state, ETAT_CLE, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY):
+            return
+        print("[state] Échec d'écriture Supabase -- repli sur STATE_FILE pour ce cycle.", file=sys.stderr)
+
     # Ecriture ATOMIQUE (fichier temporaire + remplacement) -- un process
     # tue en plein milieu (timeout GitHub Actions) ne peut plus laisser
     # state.json tronque, ce qui ferait planter load_state() au run suivant.

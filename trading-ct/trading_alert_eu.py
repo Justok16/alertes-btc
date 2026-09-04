@@ -27,12 +27,22 @@ from trading_alert import (  # noqa: E402
 import json
 import os
 
+import memoire_supabase
+
 # Evite les crashs d'encodage sur console Windows (cp1252) quand on affiche des emojis
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 STATE_FILE = Path(__file__).parent / "eu_state.json"
 EODHD_API_TOKEN = os.environ.get("EODHD_API_TOKEN")
+
+# Migration du 04/09/2026 (audit externe) : etat persiste dans Supabase
+# plutot que commite en Git a chaque cycle -- cf. memoire_supabase.py pour
+# le detail. Repli automatique sur STATE_FILE si ces secrets sont absents
+# (migration progressive, rien ne casse tant qu'ils ne sont pas ajoutes).
+SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
+SUPABASE_SERVICE_ROLE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
+ETAT_CLE = "trading_ct_eu_state"
 EODHD_EOD_URL = "https://eodhd.com/api/eod/{symbol}"
 WINDOW = 100
 
@@ -66,6 +76,19 @@ def fetch_eodhd_closes(symbol, history_days=200):
 
 
 def load_state():
+    # Migration du 04/09/2026 : Supabase d'abord si les secrets sont
+    # configures (cf. memoire_supabase.py) -- l'etat porte la detection de
+    # transition, une lecture ratee doit donc faire ABANDONNER le cycle
+    # (sys.exit) plutot que de repartir silencieusement d'un etat vide, ce
+    # qui redeclencherait une alerte deja connue. Repli sur STATE_FILE
+    # uniquement si les secrets sont absents (migration pas encore faite).
+    if SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY:
+        etat = memoire_supabase.charger_etat_supabase(ETAT_CLE, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+        if etat is not None:
+            return etat
+        print("[state] Supabase injoignable apres retry -- abandon du cycle.", file=sys.stderr)
+        sys.exit(1)
+
     # Audit du 30/08/2026 : un fichier corrompu/tronque faisait planter tout
     # le script avant meme d'atteindre les try/except qui protegent le
     # reste -- repli sur un etat vide plutot qu'un crash (meme correctif
@@ -80,6 +103,16 @@ def load_state():
 
 
 def save_state(state):
+    # Migration du 04/09/2026 : Supabase d'abord si configure -- si l'appel
+    # reussit, STATE_FILE n'est PLUS ecrit du tout (plus rien a committer,
+    # l'etape "Commit updated state" du workflow devient un no-op silencieux
+    # sans avoir besoin d'etre modifiee). Repli fichier uniquement si les
+    # secrets sont absents OU si l'ecriture Supabase a echoue.
+    if SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY:
+        if memoire_supabase.sauvegarder_etat_supabase(state, ETAT_CLE, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY):
+            return
+        print("[state] Échec d'écriture Supabase -- repli sur STATE_FILE pour ce cycle.", file=sys.stderr)
+
     # Ecriture ATOMIQUE (fichier temporaire + remplacement) -- un process
     # tue en plein milieu (timeout GitHub Actions) ne peut plus laisser
     # eu_state.json tronque, ce qui ferait planter load_state() au run suivant.

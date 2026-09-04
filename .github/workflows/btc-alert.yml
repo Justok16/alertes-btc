@@ -36,6 +36,12 @@ jobs:
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          # Ajoutes le 04/09/2026 (migration memoire_supabase.py) : SI ces
+          # 2 secrets sont configures (Settings > Secrets and variables >
+          # Actions), l'etat passe par Supabase au lieu d'etre commite en
+          # Git ci-dessous -- absents, comportement strictement inchange.
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: python btc_alert.py
 
       - name: Commit updated state
