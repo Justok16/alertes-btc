@@ -26,14 +26,26 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 from backtest_btc import fetch_fng_history, fetch_full_daily_klines, WINDOW  # noqa: E402
-from trading_alert import classify, compute_rsi, macd_score  # noqa: E402
+from trading_alert import (  # noqa: E402
+    FNG_CRYPTO_BUY, FNG_CRYPTO_SELL, MACD_BUY, MACD_SELL, RSI_BUY, RSI_SELL,
+    classify, compute_rsi, macd_score,
+)
 
 SPLIT_DATE = date(2022, 1, 1)
 
 VARIANTS = [
     {"name": "10/90 uniforme, unanimite", "rsi": (10, 90), "macd": (10, 90), "fng": (10, 90), "mode": "unanimous"},
     {"name": "15/85 uniforme, unanimite", "rsi": (15, 85), "macd": (15, 85), "fng": (15, 85), "mode": "unanimous"},
-    {"name": "Prod actuelle (F&G 10/85 asym.), unanimite", "rsi": (15, 85), "macd": (15, 85), "fng": (10, 85), "mode": "unanimous"},
+    # Libelle ET valeurs construits a partir des constantes importees de
+    # trading_alert.py, jamais recopiees en dur -- correctif du 04/09/2026
+    # (audit externe, meme bug deja corrige le 30/08/2026 dans
+    # backtest_compare.py mais jamais propage ici) : ce variant affichait
+    # "F&G 10/85 asym." avec fng=(10, 85) alors que la prod reelle etait
+    # deja passee a fng=(15, 85) (seuils uniformes RSI/MACD/F&G desormais) --
+    # ce variant "Prod actuelle" ne decrivait donc plus la strategie
+    # reellement deployee, invalidant sa pretention a la valider.
+    {"name": f"Prod actuelle (F&G {FNG_CRYPTO_BUY}/{FNG_CRYPTO_SELL}, unanimite)", "rsi": (RSI_BUY, RSI_SELL),
+     "macd": (MACD_BUY, MACD_SELL), "fng": (FNG_CRYPTO_BUY, FNG_CRYPTO_SELL), "mode": "unanimous"},
     {"name": "20/80 uniforme, unanimite", "rsi": (20, 80), "macd": (20, 80), "fng": (20, 80), "mode": "unanimous"},
     {"name": "25/75 uniforme, unanimite", "rsi": (25, 75), "macd": (25, 75), "fng": (25, 75), "mode": "unanimous"},
     {"name": "30/70 uniforme, unanimite", "rsi": (30, 70), "macd": (30, 70), "fng": (30, 70), "mode": "unanimous"},
