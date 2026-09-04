@@ -11,10 +11,14 @@ concurrency:
 
 # Ajouté le 31/08/2026 : ce repo n'avait jusqu'ici AUCUNE vérification
 # automatisée (pas de CI du tout) -- toute régression ne pouvait être
-# détectée qu'au prochain passage manuel des bots en prod. Pas de suite de
-# tests ici -- on se limite donc à pyflakes (imports inutilisés, variables
-# non définies, erreurs de syntaxe) sur btc_alert.py et trading-ct/, gratuit
+# détectée qu'au prochain passage manuel des bots en prod. Pyflakes
+# (imports inutilisés, variables non définies, erreurs de syntaxe), gratuit
 # et sans appel réseau. N'a besoin que de lire le code.
+#
+# Ajouté le 04/09/2026 : premiers vrais tests (tests/test_memoire_supabase.py,
+# stdlib unittest.mock, aucun appel réseau) sur la migration d'état vers
+# Supabase (memoire_supabase.py) -- changement jugé assez critique (bot en
+# prod, cron 5 min) pour justifier une première suite de tests dans ce repo.
 permissions:
   contents: read
 
@@ -29,7 +33,9 @@ jobs:
         uses: actions/setup-python@v7
         with:
           python-version: "3.12"
-      - name: Installer pyflakes
-        run: pip install pyflakes
+      - name: Installer les dépendances
+        run: pip install -r requirements.txt pyflakes
       - name: Analyse statique (pyflakes)
-        run: pyflakes btc_alert.py trading-ct/*.py
+        run: pyflakes btc_alert.py memoire_supabase.py trading-ct/*.py tests/*.py
+      - name: Tests (memoire_supabase.py)
+        run: python -m unittest discover -s tests -v
