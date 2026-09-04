@@ -6,8 +6,12 @@ Balaie plusieurs variantes de la strategie trading-ct sur l'historique BTC :
 
 Reutilise le telechargement de donnees et les indicateurs de backtest_btc.py.
 Les 3 indicateurs partagent les memes seuils buy/sell dans ce balayage (pour
-rester lisible) ; c'est une simplification par rapport a l'asymetrie F&G
-10/85 du bot en prod, a affiner une fois une variante choisie.
+rester lisible) ; la prod (trading_alert.py) applique en realite les memes
+seuils uniformes 15/85 aux 3 indicateurs (RSI/MACD/F&G) depuis son dernier
+changement -- cf. backtest_compare.py/backtest_walkforward.py, qui importent
+ces constantes directement plutot que de les recopier en dur ici (correctif
+du 04/09/2026 : ce commentaire mentionnait encore une asymetrie F&G 10/85
+perimee).
 """
 
 import sys
