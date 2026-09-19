@@ -27,6 +27,8 @@ from trading_alert import (  # noqa: E402
 import json
 import os
 
+import requests
+
 import memoire_supabase
 
 # Evite les crashs d'encodage sur console Windows (cp1252) quand on affiche des emojis
@@ -55,13 +57,14 @@ WINDOW = 100
 SEUIL_ECHECS_CONSECUTIFS = 3
 
 
-def fetch_eodhd_closes(symbol, history_days=200):
+def fetch_eodhd_closes(session, symbol, history_days=200):
     if not EODHD_API_TOKEN:
         print(f"[eodhd] cle API manquante, {symbol} ignore", file=sys.stderr)
         return None
     try:
         from_date = (datetime.now(timezone.utc) - timedelta(days=history_days)).strftime("%Y-%m-%d")
         r = get_with_retry(
+            session,
             EODHD_EOD_URL.format(symbol=symbol),
             params={"api_token": EODHD_API_TOKEN, "fmt": "json", "period": "d", "order": "a", "from": from_date},
         )
@@ -136,9 +139,9 @@ def build_message(result):
     return "\n".join(lines)
 
 
-def evaluate_symbol(item):
+def evaluate_symbol(session, item):
     symbol = item["symbol"]
-    closes = fetch_eodhd_closes(symbol)
+    closes = fetch_eodhd_closes(session, symbol)
     if not closes or len(closes) < WINDOW:
         print(f"{symbol}: pas assez de donnees ({len(closes) if closes else 0} bougies)")
         return None
@@ -179,11 +182,12 @@ def evaluate_symbol(item):
 
 def main():
     state = load_state()
+    session = requests.Session()
     alerte_echouee = False
     echecs = 0
 
     for item in EU_WATCHLIST:
-        result = evaluate_symbol(item)
+        result = evaluate_symbol(session, item)
         if result is None:
             echecs += 1
             continue
@@ -193,7 +197,7 @@ def main():
 
         if result["combined"] in ("buy", "sell") and result["combined"] != previous:
             try:
-                send_telegram(build_message(result))
+                send_telegram(session, build_message(result))
                 print(f"Alerte envoyee pour {symbol}: {result['combined']}")
             except Exception as e:
                 # Audit du 30/08/2026 (meme correctif que trading_alert.py) :
@@ -222,6 +226,7 @@ def main():
             and not meta.get("alerte_panne_envoyee")):
         try:
             send_telegram(
+                session,
                 "🇪🇺 <b>Trading CT — ETF Europe</b> — ⚠️ Données EODHD indisponibles\n"
                 f"Échec sur tous les ETF suivis depuis {meta['echecs_consecutifs']} cycles d'affilée "
                 "(clé API invalide, quota épuisé, endpoint changé...) : plus aucun signal n'est "
@@ -232,7 +237,7 @@ def main():
             print(f"[telegram] echec de l'alerte de panne: {e}", file=sys.stderr)
     elif not panne_ce_cycle and meta.get("alerte_panne_envoyee"):
         try:
-            send_telegram("🇪🇺 <b>Trading CT — ETF Europe</b> — ✅ Données EODHD de nouveau disponibles.")
+            send_telegram(session, "🇪🇺 <b>Trading CT — ETF Europe</b> — ✅ Données EODHD de nouveau disponibles.")
         except Exception as e:
             print(f"[telegram] echec du message de retour au vert: {e}", file=sys.stderr)
         meta["alerte_panne_envoyee"] = False
