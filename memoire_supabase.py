@@ -58,15 +58,21 @@ import requests
 log = logging.getLogger("alertes_btc.memoire_supabase")
 
 TIMEOUT = 20
-TENTATIVES = 3
+TENTATIVES = 5
 BACKOFF_SECONDES = 5
+BACKOFF_MAX_SECONDES = 40
 
 
 def _requete_avec_retry(methode, url, **kwargs):
-    """Retry minimal (3 tentatives, backoff fixe) sur erreur reseau/5xx --
-    memes garanties que get_with_retry() de chaque bot, mais autonome ici
-    pour ne pas creer de dependance croisee entre ce module et les scripts
-    qui l'utilisent (pas de session partagee requise)."""
+    """Retry sur erreur reseau/5xx, backoff exponentiel (5s/10s/20s/40s,
+    plafonne a BACKOFF_MAX_SECONDES). Durci le 22/09/2026 : des 522
+    Cloudflare recurrents (origine Supabase qui met ~15-20s a repondre en
+    erreur) epuisaient les 3 tentatives a backoff fixe de 5s en a peine 70s
+    et faisaient abandonner tout le cycle de trading-ct-alert.yml (cron
+    5 min), alors que Supabase redevenait joignable des le cycle suivant.
+    Avec 5 tentatives et ce backoff, l'origine dispose desormais de ~3 min
+    pour se retablir DANS le meme cycle avant abandon, largement sous la
+    fenetre de 5 min separant deux executions du cron."""
     derniere_erreur = None
     for tentative in range(1, TENTATIVES + 1):
         try:
@@ -77,7 +83,8 @@ def _requete_avec_retry(methode, url, **kwargs):
         except requests.RequestException as e:
             derniere_erreur = e
             if tentative < TENTATIVES:
-                time.sleep(BACKOFF_SECONDES)
+                attente = min(BACKOFF_SECONDES * (2 ** (tentative - 1)), BACKOFF_MAX_SECONDES)
+                time.sleep(attente)
     raise derniere_erreur
 
 
