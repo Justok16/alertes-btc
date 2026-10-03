@@ -136,13 +136,28 @@ python trading_alert.py
 Sans les cles Alpaca, les symboles `stock`/`etf` sont simplement ignores
 (la crypto continue de fonctionner sans aucune cle).
 
+## Bilan quotidien « le bot est vivant » (`heartbeat.py`)
+
+Workflow **Trading CT Heartbeat**, une fois par jour a 06:17 UTC (08:17 a
+Paris en ete). Job independant des bots : il lit (lecture seule) l'API GitHub
+Actions et envoie sur Telegram le nombre d'executions des dernieres 24 h.
+- 🟢 **« le bot est vivant »** : cadence normale (~288 executions crypto/US en
+  24 h), aucun echec, derniere execution recente, bot Europe/Chine execute.
+- ⚠️ **« a regarder »** : moins de 200 executions en 24 h (le declencheur
+  externe toutes les 5 min s'est probablement arrete -- GitHub seul ne lance
+  le bot que toutes les ~4 h), une execution en echec, derniere execution de
+  plus de 30 min, ou bot Europe/Chine non execute depuis plus de 3 j 12 h.
+- Si l'API GitHub est illisible, un message le dit et le job passe au rouge.
+Limite : ce job depend lui-meme du cron GitHub ; un matin sans message est
+donc aussi un signal. Test manuel possible a tout moment (Run workflow).
+
 ## Test complet des alertes (`telegram_demo.py`)
 
 Workflow **Trading CT Backtest (actions/ETF)** -> script `telegram_demo.py`.
-Il rejoue 13 scenarios dans les VRAIES boucles des deux bots (achat modere,
+Il rejoue 15 scenarios dans les VRAIES boucles des deux bots (achat modere,
 renforce -> fort, achat fort, objectif, stop, fin de suivi, vente, pannes de
-donnees et retours au vert, cote crypto et cote ETF Europe), envoie chaque
-message sur Telegram marque "TEST n/13", verifie le contenu de chacun et
+donnees et retours au vert, cote crypto et cote ETF Europe, plus les deux
+bilans quotidiens), envoie chaque message sur Telegram marque "TEST n/15", verifie le contenu de chacun et
 envoie un recapitulatif ; le job devient rouge si un scenario echoue.
 L'etat reel (fichiers / Supabase) n'est jamais lu ni modifie, aucune donnee
 de marche n'est appelee, prix et scores sont fictifs. Le test lui-meme est

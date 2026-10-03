@@ -1,0 +1,43 @@
+name: Trading CT Heartbeat
+
+on:
+  schedule:
+    # Une fois par jour (06:17 UTC = 08:17 en ete / 07:17 en hiver a Paris),
+    # minute decalee a dessein : le debut d'heure est le moment le plus charge
+    # du cron GitHub.
+    - cron: "17 6 * * *"
+  workflow_dispatch: {}
+
+# Lecture seule : le job ne fait que lire l'API des executions GitHub Actions.
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: trading-ct-heartbeat
+  cancel-in-progress: false
+
+jobs:
+  heartbeat:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: trading-ct
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Send heartbeat
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python heartbeat.py

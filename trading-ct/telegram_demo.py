@@ -5,7 +5,8 @@ Contrairement a un simple envoi d'exemples, chaque scenario passe par la VRAIE
 boucle principale (trading_alert.main() / trading_alert_eu.main()) avec des
 resultats de strategie simules : decision d'alerte, niveaux fort/modere,
 "renforce", objectif/stop/fin de suivi, ventes, pannes de donnees et retours
-au vert. Les messages produits sont envoyes sur ton Telegram, chacun marque
+au vert ; plus les deux bilans quotidiens (bot vivant / cadence degradee, via
+heartbeat.build_message). Les messages produits sont envoyes sur ton Telegram, chacun marque
 "TEST n/N", et chaque scenario est VERIFIE (un message attendu, avec le bon
 contenu). Un recapitulatif final est envoye ; le script sort en erreur (job
 rouge) si un scenario echoue ou si un envoi Telegram echoue.
@@ -30,6 +31,7 @@ from unittest.mock import patch
 import requests
 
 sys.path.insert(0, str(Path(__file__).parent))
+import heartbeat  # noqa: E402
 import trading_alert  # noqa: E402
 import trading_alert_eu  # noqa: E402
 
@@ -57,8 +59,19 @@ def ancien_horodatage(jours):
     return (datetime.now(timezone.utc) - timedelta(days=jours)).isoformat()
 
 
+def bilan(total, failures, minutes):
+    """Message du bilan quotidien (heartbeat.build_message) pour des statistiques fictives."""
+    now = datetime.now(timezone.utc)
+    main = {"total": total, "failures": failures, "last_at": now - timedelta(minutes=minutes),
+            "last_conclusion": "success"}
+    eu = {"total": 1, "failures": 0, "last_at": now - timedelta(hours=14), "last_conclusion": "success"}
+    return heartbeat.build_message(main, eu, now)[1]
+
+
 def scenarios():
-    """(label, module, etat_a_injecter|None, resultat_evaluate|None, marqueurs_attendus)"""
+    """(label, module, etat_a_injecter|None, resultat_evaluate|None, marqueurs_attendus)
+
+    module = None : message direct (bilan quotidien), `resultat_evaluate` est alors le texte."""
     c, e = trading_alert, trading_alert_eu
     seuil_c = c.SEUIL_ECHECS_CRYPTO_CONSECUTIFS
     seuil_e = e.SEUIL_ECHECS_CONSECUTIFS
@@ -92,6 +105,11 @@ def scenarios():
          None, ["Données EODHD indisponibles"]),
         ("retour au vert des données EODHD", e, None,
          eu_result("neutral", None, 99.0, 55.0, 50.0, 52.0), ["Données EODHD de nouveau disponibles"]),
+        # Bilans quotidiens : messages directs (module None), via la vraie fonction de heartbeat.py
+        ("bilan quotidien : bot vivant", None, None,
+         bilan(total=288, failures=0, minutes=3), ["le bot est vivant", "288 exécutions"]),
+        ("bilan quotidien : cadence dégradée", None, None,
+         bilan(total=6, failures=1, minutes=190), ["à regarder", "Cadence dégradée", "en échec"]),
     ]
 
 
@@ -126,23 +144,32 @@ def main():
         banniere = (f"🧪 <b>TEST {i}/{total} — {label}</b>\n"
                     "Message d'exemple, ce n'est pas un vrai signal.\n\n")
         print(f"--- TEST {i}/{total} : {label} ---")
-        if etat:
-            merge_state(state_files[module], etat)
 
-        watchlist_patch = (patch.object(module, "WATCHLIST", [BTC]) if module is trading_alert
-                           else patch.object(module, "EU_WATCHLIST", [ETF]))
-        with watchlist_patch, \
-                patch.object(module, "STATE_FILE", state_files[module]), \
-                patch.object(module, "SUPABASE_URL", ""), \
-                patch.object(module, "SUPABASE_SERVICE_ROLE_KEY", ""), \
-                patch.object(module, "send_telegram", forward(banniere)), \
-                patch.object(module, "evaluate_symbol", return_value=resultat), \
-                patch.object(trading_alert, "fetch_crypto_fng", return_value=50):
+        if module is None:
+            # Message direct (bilan quotidien) : `resultat` est le texte deja construit.
             try:
-                module.main()
+                forward(banniere)(requests.Session(), resultat)
                 sortie_erreur = False
-            except SystemExit as ex:
-                sortie_erreur = bool(ex.code)
+            except Exception:
+                sortie_erreur = True
+        else:
+            if etat:
+                merge_state(state_files[module], etat)
+
+            watchlist_patch = (patch.object(module, "WATCHLIST", [BTC]) if module is trading_alert
+                               else patch.object(module, "EU_WATCHLIST", [ETF]))
+            with watchlist_patch, \
+                    patch.object(module, "STATE_FILE", state_files[module]), \
+                    patch.object(module, "SUPABASE_URL", ""), \
+                    patch.object(module, "SUPABASE_SERVICE_ROLE_KEY", ""), \
+                    patch.object(module, "send_telegram", forward(banniere)), \
+                    patch.object(module, "evaluate_symbol", return_value=resultat), \
+                    patch.object(trading_alert, "fetch_crypto_fng", return_value=50):
+                try:
+                    module.main()
+                    sortie_erreur = False
+                except SystemExit as ex:
+                    sortie_erreur = bool(ex.code)
 
         probleme = None
         if sortie_erreur:

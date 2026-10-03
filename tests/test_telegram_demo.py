@@ -24,9 +24,9 @@ class TestTelegramDemo(unittest.TestCase):
     def test_tous_les_scenarios_passent_sur_le_code_actuel(self):
         code, envoi = self.lancer()
         self.assertEqual(code, 0)
-        self.assertEqual(envoi.call_count, 14)   # 13 scenarios + recapitulatif
+        self.assertEqual(envoi.call_count, 16)   # 15 scenarios + recapitulatif
         recap = envoi.call_args_list[-1].args[1]
-        self.assertIn("13/13", recap)
+        self.assertIn("15/15", recap)
         self.assertNotIn("❌", recap)
 
     def test_chaque_message_est_marque_test(self):
@@ -43,7 +43,7 @@ class TestTelegramDemo(unittest.TestCase):
         self.assertEqual(code, 1)
         recap = envoi.call_args_list[-1].args[1]
         self.assertIn("❌", recap)
-        self.assertIn("11/13", recap)
+        self.assertIn("13/15", recap)
 
     def test_echec_telegram_rend_le_test_en_erreur(self):
         envoi = MagicMock(side_effect=RuntimeError("telegram down"))
