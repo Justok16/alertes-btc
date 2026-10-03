@@ -1,76 +1,174 @@
 """
-Envoie sur Telegram des EXEMPLES de chaque type d'alerte du bot, construits
-avec les vraies fonctions de formatage (trading_alert.build_message,
-trading_alert_eu.build_message, exit_rules.build_exit_message) : le rendu est
-exactement celui d'une vraie alerte. Chaque message est marque "MESSAGE DE
-TEST" pour ne jamais etre pris pour un vrai signal.
+Test complet de TOUTES les alertes du bot, de bout en bout.
 
-Aucun etat n'est lu ni ecrit (ni fichier, ni Supabase), aucune donnee de
-marche n'est appelee : les prix et scores ci-dessous sont fictifs.
+Contrairement a un simple envoi d'exemples, chaque scenario passe par la VRAIE
+boucle principale (trading_alert.main() / trading_alert_eu.main()) avec des
+resultats de strategie simules : decision d'alerte, niveaux fort/modere,
+"renforce", objectif/stop/fin de suivi, ventes, pannes de donnees et retours
+au vert. Les messages produits sont envoyes sur ton Telegram, chacun marque
+"TEST n/N", et chaque scenario est VERIFIE (un message attendu, avec le bon
+contenu). Un recapitulatif final est envoye ; le script sort en erreur (job
+rouge) si un scenario echoue ou si un envoi Telegram echoue.
+
+Garanties : l'etat des bots est redirige vers des fichiers temporaires
+(STATE_FILE) avec Supabase desactive -- ton vrai etat n'est jamais lu ni
+ecrit ; aucune donnee de marche n'est appelee ; prix/scores fictifs.
 Sans TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID, les messages sont seulement
-affiches (comme le fait send_telegram).
+affiches (la verification des scenarios reste faite).
 
 Usage : python telegram_demo.py
 """
 
+import json
 import sys
+import tempfile
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from unittest.mock import patch
 
 import requests
 
 sys.path.insert(0, str(Path(__file__).parent))
-import exit_rules  # noqa: E402
 import trading_alert  # noqa: E402
 import trading_alert_eu  # noqa: E402
 
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
-TEST_BANNER = "🧪 <b>MESSAGE DE TEST</b> — exemple de format, ce n'est pas un vrai signal\n\n"
-HEADER_US = "⚡ <b>Trading CT</b>"
-HEADER_EU = "🇪🇺 <b>Trading CT — ETF Europe</b>"
+REAL_SEND = trading_alert.send_telegram  # capture AVANT tout patch
+PAUSE_ENTRE_MESSAGES = 1.5  # secondes : evite le rate-limit Telegram, garde l'ordre d'arrivee
+
+BTC = {"symbol": "BTCUSDT", "display": "Bitcoin", "asset_class": "crypto"}
+ETF = {"symbol": "VVSM.XETRA", "display": "VanEck Semiconductor UCITS ETF"}
 
 
-def exemples():
-    crypto = {"symbol": "BTCUSDT", "display": "Bitcoin", "price": 61234.5,
-              "rsi": 17.8, "macd_score": 19.2, "fng": 16.0}
-    europe = {"symbol": "VVSM.XETRA", "display": "VanEck Semiconductor UCITS ETF", "price": 98.42,
-              "rsi": 18.4, "macd_score": 14.9, "home_score": 17.6}
+def crypto_result(combined, level, price, rsi, macd, fng):
+    return {"symbol": "BTCUSDT", "display": "Bitcoin", "combined": combined, "level": level,
+            "price": price, "rsi": rsi, "macd_score": macd, "fng": fng}
 
-    entry = {"price": 61234.5, "ts": (datetime.now(timezone.utc) - timedelta(days=3)).isoformat()}
-    cible, stop = exit_rules.exit_rule_for({"asset_class": "crypto"})
 
-    def sortie(kind, price):
-        change = (price / entry["price"] - 1) * 100
-        return exit_rules.build_exit_message(
-            HEADER_US, "Bitcoin", "BTCUSDT", kind, entry, price, change, cible, stop)
+def eu_result(combined, level, price, rsi, macd, home):
+    return {"symbol": "VVSM.XETRA", "display": ETF["display"], "combined": combined, "level": level,
+            "price": price, "rsi": rsi, "macd_score": macd, "home_score": home}
 
+
+def ancien_horodatage(jours):
+    return (datetime.now(timezone.utc) - timedelta(days=jours)).isoformat()
+
+
+def scenarios():
+    """(label, module, etat_a_injecter|None, resultat_evaluate|None, marqueurs_attendus)"""
+    c, e = trading_alert, trading_alert_eu
+    seuil_c = c.SEUIL_ECHECS_CRYPTO_CONSECUTIFS
+    seuil_e = e.SEUIL_ECHECS_CONSECUTIFS
     return [
-        ("1/6 achat MODÉRÉ (crypto)",
-         trading_alert.build_message({**crypto, "combined": "buy", "level": "moderate"})),
-        ("2/6 renforcé → FORT",
-         trading_alert.build_message({**crypto, "combined": "buy", "level": "strong",
-                                      "rsi": 12.1, "macd_score": 13.5, "fng": 14.0}, upgrade=True)),
-        ("3/6 objectif atteint", sortie("target", round(entry["price"] * 1.082, 1))),
-        ("4/6 stop atteint", sortie("stop", round(entry["price"] * 0.948, 1))),
-        ("5/6 fin du suivi (30 jours)", sortie("expired", round(entry["price"] * 1.021, 1))),
-        ("6/6 achat MODÉRÉ (ETF Europe)",
-         trading_alert_eu.build_message({**europe, "combined": "buy", "level": "moderate"})),
+        ("achat MODÉRÉ (crypto)", c, None,
+         crypto_result("buy", "moderate", 61000.0, 17.8, 19.2, 16.0), ["ACHAT MODÉRÉ", "20 ou moins"]),
+        ("passage MODÉRÉ → FORT (renforcé)", c, None,
+         crypto_result("buy", "strong", 60500.0, 12.1, 13.5, 14.0), ["RENFORCÉ → FORT"]),
+        ("objectif atteint (+8 %)", c, None,
+         crypto_result("neutral", None, 66500.0, 52.0, 48.0, 55.0), ["OBJECTIF ATTEINT"]),
+        ("achat FORT (crypto)", c, None,
+         crypto_result("buy", "strong", 61000.0, 11.4, 12.9, 13.0), ["ACHAT FORT", "15 ou moins"]),
+        ("stop atteint (-5 %)", c, None,
+         crypto_result("neutral", None, 57800.0, 40.0, 35.0, 42.0), ["STOP ATTEINT"]),
+        ("vente (crypto)", c, None,
+         crypto_result("sell", "strong", 63000.0, 91.0, 88.0, 90.0), ["SIGNAL DE VENTE"]),
+        ("fin du suivi après 30 jours", c,
+         {"BTCUSDT": {"combined_state": "neutral", "entry": {"price": 61000.0, "ts": ancien_horodatage(31)}}},
+         crypto_result("neutral", None, 62000.0, 55.0, 50.0, 52.0), ["FIN DU SUIVI"]),
+        ("panne des données crypto (Binance)", c,
+         {"_meta": {"echecs_crypto_consecutifs": seuil_c - 1, "alerte_panne_crypto_envoyee": False}},
+         None, ["Données crypto (Binance) indisponibles"]),
+        ("retour au vert des données crypto", c, None,
+         crypto_result("neutral", None, 62000.0, 55.0, 50.0, 52.0), ["Données crypto de nouveau disponibles"]),
+        ("achat MODÉRÉ (ETF Europe)", e, None,
+         eu_result("buy", "moderate", 98.42, 18.4, 14.9, 17.6), ["ETF Europe", "ACHAT MODÉRÉ"]),
+        ("vente (ETF Europe)", e, None,
+         eu_result("sell", "strong", 112.8, 90.2, 87.5, 91.0), ["ETF Europe", "SIGNAL DE VENTE"]),
+        ("panne des données EODHD", e,
+         {"_meta": {"echecs_consecutifs": seuil_e - 1, "alerte_panne_envoyee": False}},
+         None, ["Données EODHD indisponibles"]),
+        ("retour au vert des données EODHD", e, None,
+         eu_result("neutral", None, 99.0, 55.0, 50.0, 52.0), ["Données EODHD de nouveau disponibles"]),
     ]
 
 
+def merge_state(state_file, patch_state):
+    etat = json.loads(state_file.read_text(encoding="utf-8")) if state_file.exists() else {}
+    for cle, valeur in patch_state.items():
+        if cle == "_meta":
+            etat.setdefault("_meta", {}).update(valeur)
+        else:
+            etat[cle] = valeur
+    state_file.write_text(json.dumps(etat), encoding="utf-8")
+
+
 def main():
-    session = requests.Session()
-    messages = exemples()
-    for i, (titre, message) in enumerate(messages):
-        print(f"--- {titre} ---")
-        trading_alert.send_telegram(session, TEST_BANNER + message)
-        if i < len(messages) - 1:
-            time.sleep(1.5)  # evite le rate-limit Telegram et garde l'ordre d'arrivee
-    print(f"{len(messages)} messages de test traites.")
+    plan = scenarios()
+    total = len(plan)
+    tmp = tempfile.TemporaryDirectory()
+    state_files = {trading_alert: Path(tmp.name) / "crypto_state.json",
+                   trading_alert_eu: Path(tmp.name) / "eu_state.json"}
+    verdicts = []
+    envoyes = []
+
+    def forward(banniere):
+        def _send(session, message):
+            envoyes.append(message)
+            REAL_SEND(session, banniere + message)
+            time.sleep(PAUSE_ENTRE_MESSAGES)
+        return _send
+
+    for i, (label, module, etat, resultat, marqueurs) in enumerate(plan, start=1):
+        envoyes.clear()
+        banniere = (f"🧪 <b>TEST {i}/{total} — {label}</b>\n"
+                    "Message d'exemple, ce n'est pas un vrai signal.\n\n")
+        print(f"--- TEST {i}/{total} : {label} ---")
+        if etat:
+            merge_state(state_files[module], etat)
+
+        watchlist_patch = (patch.object(module, "WATCHLIST", [BTC]) if module is trading_alert
+                           else patch.object(module, "EU_WATCHLIST", [ETF]))
+        with watchlist_patch, \
+                patch.object(module, "STATE_FILE", state_files[module]), \
+                patch.object(module, "SUPABASE_URL", ""), \
+                patch.object(module, "SUPABASE_SERVICE_ROLE_KEY", ""), \
+                patch.object(module, "send_telegram", forward(banniere)), \
+                patch.object(module, "evaluate_symbol", return_value=resultat), \
+                patch.object(trading_alert, "fetch_crypto_fng", return_value=50):
+            try:
+                module.main()
+                sortie_erreur = False
+            except SystemExit as ex:
+                sortie_erreur = bool(ex.code)
+
+        probleme = None
+        if sortie_erreur:
+            probleme = "envoi Telegram échoué"
+        elif len(envoyes) != 1:
+            probleme = f"{len(envoyes)} message(s) au lieu de 1"
+        else:
+            manquants = [m for m in marqueurs if m not in envoyes[0]]
+            if manquants:
+                probleme = f"contenu inattendu (manque : {', '.join(manquants)})"
+        verdicts.append((label, probleme))
+        print(f"    -> {'OK' if probleme is None else 'ECHEC : ' + probleme}")
+
+    tmp.cleanup()
+    ok = sum(1 for _, p in verdicts if p is None)
+    lignes = [f"🧪 <b>TEST COMPLET — {ok}/{total} scénarios OK</b>"]
+    for label, probleme in verdicts:
+        lignes.append(("✅ " if probleme is None else "❌ ") + label + ("" if probleme is None else f" — {probleme}"))
+    lignes += ["", "Aucun état réel n'a été lu ni modifié ; prix et scores fictifs."]
+    try:
+        REAL_SEND(requests.Session(), "\n".join(lignes))
+    except Exception as ex:  # le recapitulatif ne doit pas masquer le verdict
+        print(f"[telegram] echec du recapitulatif : {ex}", file=sys.stderr)
+    print(f"{ok}/{total} scenarios OK")
+    return 0 if ok == total else 1
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

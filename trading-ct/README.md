@@ -136,6 +136,18 @@ python trading_alert.py
 Sans les cles Alpaca, les symboles `stock`/`etf` sont simplement ignores
 (la crypto continue de fonctionner sans aucune cle).
 
+## Test complet des alertes (`telegram_demo.py`)
+
+Workflow **Trading CT Backtest (actions/ETF)** -> script `telegram_demo.py`.
+Il rejoue 13 scenarios dans les VRAIES boucles des deux bots (achat modere,
+renforce -> fort, achat fort, objectif, stop, fin de suivi, vente, pannes de
+donnees et retours au vert, cote crypto et cote ETF Europe), envoie chaque
+message sur Telegram marque "TEST n/13", verifie le contenu de chacun et
+envoie un recapitulatif ; le job devient rouge si un scenario echoue.
+L'etat reel (fichiers / Supabase) n'est jamais lu ni modifie, aucune donnee
+de marche n'est appelee, prix et scores sont fictifs. Le test lui-meme est
+couvert par `tests/test_telegram_demo.py` (il doit echouer si une alerte casse).
+
 ## Limites connues
 
 - Ce n'est **pas** du scalping minute par minute : meme a 5 min, le cron
