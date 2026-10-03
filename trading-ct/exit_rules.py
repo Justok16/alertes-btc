@@ -104,15 +104,15 @@ def build_exit_message(header, display, symbol, kind, entry, price, change_pct,
                        target_pct, stop_pct, max_days=EXIT_MAX_DAYS):
     depuis = str(entry.get("ts", ""))[:10] or "date inconnue"
     if kind == "target":
-        titre = f"🎯 OBJECTIF ATTEINT (+{target_pct:g} %)"
+        titre = f"🎯 OBJECTIF ATTEINT (+{target_pct:g} %)"
     elif kind == "stop":
-        titre = f"🛑 STOP ATTEINT (-{stop_pct:g} %)"
+        titre = f"🛑 STOP ATTEINT (-{stop_pct:g} %)"
     else:
         titre = f"⏱ FIN DU SUIVI ({max_days} jours)"
     lines = [
         f"{header} — {titre}",
         f"{display} ({symbol})",
-        f"Variation depuis l'alerte d'achat du {depuis} : {change_pct:+.1f} % "
+        f"Variation depuis l'alerte d'achat du {depuis} : {change_pct:+.1f} % "
         f"({entry['price']} → {price})",
     ]
     if kind == "expired":

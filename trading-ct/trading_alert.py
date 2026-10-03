@@ -388,7 +388,7 @@ def build_message(result, upgrade=False):
     ]
     if explication:
         lines += ["", explication]
-    lines += ["", "Signal technique automatise, pas un conseil financier. Decision et execution manuelles."]
+    lines += ["", "Signal technique automatisé, pas un conseil financier. Décision et exécution manuelles."]
     return "\n".join(lines)
 
 
