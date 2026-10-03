@@ -108,6 +108,13 @@ class TestRegles(unittest.TestCase):
     def test_surcharge_par_actif(self):
         self.assertEqual(exit_rules.exit_rule_for({"asset_class": "crypto", "exit_rule": (12, 7)}), (12.0, 7.0))
 
+    def test_watchlist_reelle_hut_plus_large_les_autres_par_defaut(self):
+        from watchlist import WATCHLIST
+        regles = {i["symbol"]: exit_rules.exit_rule_for(i) for i in WATCHLIST}
+        self.assertEqual(regles["HUT"], (12.0, 8.0))
+        self.assertEqual(regles["NOG"], (6.0, 4.0))
+        self.assertEqual(regles["BTCUSDT"], (8.0, 5.0))
+
 
 class TestMessage(unittest.TestCase):
     def test_messages_contiennent_l_essentiel(self):

@@ -27,5 +27,8 @@ WATCHLIST = [
     # Codes allemands de la liste Trade Republic -> ticker US (meme societe) :
     # 4LT1 = Northern Oil & Gas (NYSE: NOG), HUT = Hut 8 (Nasdaq: HUT).
     {"symbol": "NOG", "display": "Northern Oil & Gas (4LT1)", "asset_class": "stock"},
-    {"symbol": "HUT", "display": "Hut 8 (HUT)", "asset_class": "stock"},
+    # HUT : tres volatil (mineur de bitcoin / infrastructure IA) -- la regle
+    # par defaut des actions (+6 %/-4 %) serait declenchee par le simple bruit
+    # du cours. Niveaux plus larges, de bon sens et NON testes (a ajuster).
+    {"symbol": "HUT", "display": "Hut 8 (HUT)", "asset_class": "stock", "exit_rule": (12, 8)},
 ]
