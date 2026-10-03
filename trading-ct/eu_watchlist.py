@@ -2,7 +2,7 @@
 Actifs non couverts par Alpaca (Europe, Chine continentale...) suivis via
 EODHD (necessite EODHD_API_TOKEN). Verifies une fois par jour seulement --
 le tier gratuit EODHD est limite a 20 appels API/jour, donc ce fichier est
-volontairement tenu court (6 symboles = 6 appels/jour).
+volontairement tenu court (10 symboles = 10 appels/jour).
 
 Format des symboles : <TICKER>.<EXCHANGE_CODE> tel qu'attendu par l'API
 EODHD, verifie via /api/search/<query> avant tout ajout -- le code de
@@ -21,4 +21,12 @@ EU_WATCHLIST = [
     {"symbol": "HNSC.LSE", "display": "HSBC Nasdaq Global Semiconductor UCITS ETF"},
     {"symbol": "159995.SHE", "display": "ChinaAMC CSI Semiconductor Chip ETF"},
     {"symbol": "512480.SHG", "display": "CPIC CSI Fully Semiconductor ETF"},
+    # Ajoutes le 03/10/2026 depuis la liste Trade Republic de l'utilisateur ;
+    # codes valides avec eodhd_probe.py (cours en EUR, coherents avec l'app).
+    # .F = Bourse de Francfort : BY6/4BY/LGI n'existent pas sous .XETRA chez
+    # EODHD (404 ou reponse vide), seul AIFS y est disponible.
+    {"symbol": "BY6.F", "display": "BYD Company (BY6)"},
+    {"symbol": "4BY.F", "display": "BYD Electronic (4BY)"},
+    {"symbol": "AIFS.XETRA", "display": "iShares AI Infrastructure UCITS ETF (AIFS)"},
+    {"symbol": "LGI.F", "display": "Legal & General Group (LGI)"},
 ]
