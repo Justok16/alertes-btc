@@ -15,6 +15,9 @@ que l'etat combine vient de changer par rapport a la derniere execution :
      - actions/ETF : score maison (RSI(14) + position dans le range 14
        bougies), pas d'indice F&G officiel par titre individuel
 
+Apres une alerte d'achat, le bot suit aussi le prix de l'alerte et previent
+une fois si un objectif de gain ou un stop est atteint (cf. exit_rules.py).
+
 Ceci est un outil de signal technique, PAS un conseil en investissement.
 Aucune execution d'ordre n'est faite par ce script.
 """
@@ -24,12 +27,13 @@ import json
 import os
 import sys
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import requests
 
+import exit_rules
 import memoire_supabase
 from watchlist import WATCHLIST
 
@@ -416,10 +420,15 @@ def main():
 
         symbol = result["symbol"]
         previous = state.get(symbol, {}).get("combined_state", "neutral")
+        new_alert = result["combined"] if (
+            result["combined"] in ("buy", "sell") and result["combined"] != previous
+        ) else None
+        alert_sent = False
 
-        if result["combined"] in ("buy", "sell") and result["combined"] != previous:
+        if new_alert:
             try:
                 send_telegram(session, build_message(result))
+                alert_sent = True
                 print(f"Alerte envoyee pour {symbol}: {result['combined']}")
             except Exception as e:
                 # Audit du 30/08/2026 : ce `continue` sautait la mise a jour
@@ -438,7 +447,31 @@ def main():
         else:
             print(f"{symbol}: pas d'alerte (etat={result['combined']}, precedent={previous})")
 
+        # Suivi de position par le prix (objectif / stop depuis l'alerte
+        # d'achat) -- cf. exit_rules.py. L'etat de transition ci-dessous est
+        # mis a jour quoi qu'il arrive (meme principe que l'audit du
+        # 30/08/2026 : une alerte de sortie n'est tentee qu'UNE fois).
+        old_entry = state.get(symbol, {}).get("entry")
+        target_pct, stop_pct = exit_rules.exit_rule_for(item)
+        entry, exit_event = exit_rules.step_position(
+            old_entry, new_alert, alert_sent, result["price"],
+            datetime.now(timezone.utc), target_pct, stop_pct,
+        )
+        if exit_event:
+            kind, change_pct = exit_event
+            try:
+                send_telegram(session, exit_rules.build_exit_message(
+                    "⚡ <b>Trading CT</b>", result["display"], symbol, kind,
+                    old_entry, result["price"], change_pct, target_pct, stop_pct,
+                ))
+                print(f"Alerte de sortie envoyee pour {symbol}: {kind} ({change_pct:+.1f} %)")
+            except Exception as e:
+                print(f"[telegram] echec de l'alerte de sortie pour {symbol}: {e}", file=sys.stderr)
+                alerte_echouee = True
+
         state[symbol] = {"combined_state": result["combined"]}
+        if entry:
+            state[symbol]["entry"] = entry
 
     # cf. SEUIL_ECHECS_CRYPTO_CONSECUTIFS plus haut. `_meta` : cle reservee,
     # ne peut jamais collisionner avec un symbole (toujours en majuscules).

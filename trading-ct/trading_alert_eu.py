@@ -18,6 +18,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
+import exit_rules  # noqa: E402
 from eu_watchlist import EU_WATCHLIST  # noqa: E402
 from trading_alert import (  # noqa: E402
     HOME_BUY, HOME_SELL, MACD_BUY, MACD_SELL, RSI_BUY, RSI_SELL,
@@ -194,10 +195,15 @@ def main():
 
         symbol = result["symbol"]
         previous = state.get(symbol, {}).get("combined_state", "neutral")
+        new_alert = result["combined"] if (
+            result["combined"] in ("buy", "sell") and result["combined"] != previous
+        ) else None
+        alert_sent = False
 
-        if result["combined"] in ("buy", "sell") and result["combined"] != previous:
+        if new_alert:
             try:
                 send_telegram(session, build_message(result))
+                alert_sent = True
                 print(f"Alerte envoyee pour {symbol}: {result['combined']}")
             except Exception as e:
                 # Audit du 30/08/2026 (meme correctif que trading_alert.py) :
@@ -211,7 +217,29 @@ def main():
         else:
             print(f"{symbol}: pas d'alerte (etat={result['combined']}, precedent={previous})")
 
+        # Suivi de position par le prix (objectif / stop depuis l'alerte
+        # d'achat), evalue sur le cours de cloture du jour -- cf. exit_rules.py.
+        old_entry = state.get(symbol, {}).get("entry")
+        target_pct, stop_pct = exit_rules.exit_rule_for(item)
+        entry, exit_event = exit_rules.step_position(
+            old_entry, new_alert, alert_sent, result["price"],
+            datetime.now(timezone.utc), target_pct, stop_pct,
+        )
+        if exit_event:
+            kind, change_pct = exit_event
+            try:
+                send_telegram(session, exit_rules.build_exit_message(
+                    "🇪🇺 <b>Trading CT — ETF Europe</b>", result["display"], symbol, kind,
+                    old_entry, result["price"], change_pct, target_pct, stop_pct,
+                ))
+                print(f"Alerte de sortie envoyee pour {symbol}: {kind} ({change_pct:+.1f} %)")
+            except Exception as e:
+                print(f"[telegram] echec de l'alerte de sortie pour {symbol}: {e}", file=sys.stderr)
+                alerte_echouee = True
+
         state[symbol] = {"combined_state": result["combined"]}
+        if entry:
+            state[symbol]["entry"] = entry
 
     # cf. SEUIL_ECHECS_CONSECUTIFS plus haut. `_meta` : cle reservee, ne
     # peut jamais collisionner avec un symbole.

@@ -33,6 +33,28 @@ pas de vote a 2 sur 3) sur le meme sens, ET que cet etat combine vient de
 changer par rapport a la derniere execution. Seuils volontairement stricts :
 signaux rares, mais les 3 confirmations doivent converger.
 
+## Regles de sortie (objectif / stop)
+
+Les signaux de VENTE de la strategie sont tres rares (sur crypto, le Fear &
+Greed >= 85 ne s'est produit aucun jour sur l'annee ecoulee). Le bot ajoute
+donc une regle de sortie par le prix, **calculee par rapport au prix de
+l'alerte d'achat** (le bot n'execute rien et ne connait pas tes positions) :
+
+- apres une alerte d'achat, le prix et la date sont memorises (`entry` dans
+  l'etat du symbole) ;
+- une alerte de sortie part **une seule fois** quand le cours gagne
+  `+objectif %` ou perd `-stop %` depuis ce prix ;
+- sans l'un ni l'autre apres 30 jours, un message annonce la fin du suivi ;
+- une alerte de vente de la strategie ferme aussi le suivi.
+
+Valeurs par defaut (`exit_rules.py`) : crypto **+8 % / -5 %** (choisies sur
+l'historique des alertes BTC/ETH en 15 min : objectif atteint avant le stop
+dans ~53-56 % des cas, sur une seule annee -- un repere, pas une garantie) ;
+actions/ETF **+6 % / -4 %** (non testees). Surcharge possible par actif en
+ajoutant `"exit_rule": (objectif, stop)` dans `watchlist.py` /
+`eu_watchlist.py`. Le suivi est evalue sur chaque cycle (5 min pour
+crypto/US, 1x/jour pour l'Europe/Chine, sur le cours de cloture).
+
 ## Watchlist
 
 Voir `watchlist.py`. Liste par defaut volontairement limitee a des actifs
