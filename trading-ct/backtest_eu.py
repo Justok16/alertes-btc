@@ -11,6 +11,8 @@ pagination) : 4 symboles = 4 appels, tres loin du quota gratuit de 20/jour.
 import sys
 from pathlib import Path
 
+import requests
+
 sys.path.insert(0, str(Path(__file__).parent))
 from eu_watchlist import EU_WATCHLIST  # noqa: E402
 from trading_alert import (  # noqa: E402
@@ -20,10 +22,11 @@ from trading_alert import (  # noqa: E402
 from trading_alert_eu import EODHD_API_TOKEN, EODHD_EOD_URL, WINDOW  # noqa: E402
 
 
-def fetch_full_eodhd_closes(symbol):
+def fetch_full_eodhd_closes(session, symbol):
     if not EODHD_API_TOKEN:
         raise RuntimeError("EODHD_API_TOKEN manquant dans l'environnement")
     r = get_with_retry(
+        session,
         EODHD_EOD_URL.format(symbol=symbol),
         params={"api_token": EODHD_API_TOKEN, "fmt": "json", "period": "d", "order": "a"},
     )
@@ -91,11 +94,12 @@ def run_backtest(closes, dates):
 
 def main():
     results = []
+    session = requests.Session()
     for item in EU_WATCHLIST:
         symbol = item["symbol"]
         print(f"Telechargement + backtest {symbol}...")
         try:
-            dates, closes = fetch_full_eodhd_closes(symbol)
+            dates, closes = fetch_full_eodhd_closes(session, symbol)
         except Exception as e:
             print(f"  echec pour {symbol}: {e}")
             continue

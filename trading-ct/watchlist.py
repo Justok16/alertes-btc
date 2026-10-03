@@ -24,4 +24,8 @@ WATCHLIST = [
     {"symbol": "PSI", "display": "Invesco Dynamic Semiconductors ETF", "asset_class": "etf"},
     {"symbol": "SMHC", "display": "VanEck China Semiconductor ETF", "asset_class": "etf"},
     {"symbol": "KTEC", "display": "KraneShares Hang Seng TECH Index ETF", "asset_class": "etf"},
+    # Codes allemands de la liste Trade Republic -> ticker US (meme societe) :
+    # 4LT1 = Northern Oil & Gas (NYSE: NOG), HUT = Hut 8 (Nasdaq: HUT).
+    {"symbol": "NOG", "display": "Northern Oil & Gas (4LT1)", "asset_class": "stock"},
+    {"symbol": "HUT", "display": "Hut 8 (HUT)", "asset_class": "stock"},
 ]

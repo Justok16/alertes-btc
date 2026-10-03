@@ -12,6 +12,7 @@ on:
           - backtest_stocks.py
           - backtest_drawdown_stocks.py
           - backtest_eu.py
+          - eodhd_probe.py
       symbols:
         description: "Symboles a backtester, separes par des espaces"
         required: false

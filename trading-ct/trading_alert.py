@@ -79,7 +79,11 @@ SEUIL_ECHECS_CRYPTO_CONSECUTIFS = 12
 
 
 def get_with_retry(session, url, params=None, headers=None, retries=3, backoff=15):
-    """GET avec retry en cas de 429 (rate limit) ou d'erreur reseau transitoire."""
+    """GET avec retry en cas de 429 (rate limit) ou d'erreur reseau transitoire.
+
+    Les erreurs client deterministes (401 cle invalide, 404 symbole inconnu...)
+    ne sont PAS retentees : retenter ne changera rien, coute ~45 s de backoff
+    par symbole, et chaque tentative compte contre le quota EODHD (20/jour)."""
     last_exc = None
     for attempt in range(retries):
         try:
@@ -89,6 +93,13 @@ def get_with_retry(session, url, params=None, headers=None, retries=3, backoff=1
                 continue
             r.raise_for_status()
             return r
+        except requests.exceptions.HTTPError as e:
+            last_exc = e
+            status = e.response.status_code if e.response is not None else None
+            if status is not None and 400 <= status < 500 and status not in (408, 429):
+                raise
+            if attempt < retries - 1:
+                time.sleep(backoff * (attempt + 1))
         except requests.exceptions.RequestException as e:
             last_exc = e
             if attempt < retries - 1:
