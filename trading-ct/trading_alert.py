@@ -15,6 +15,9 @@ que l'etat combine vient de changer par rapport a la derniere execution :
      - actions/ETF : score maison (RSI(14) + position dans le range 14
        bougies), pas d'indice F&G officiel par titre individuel
 
+Achat : signal FORT (3 indicateurs <= 15) ou MODERE (3 indicateurs <= 20, cf.
+MODERATE_BUY) ; vente : seuil fort uniquement.
+
 Apres une alerte d'achat, le bot suit aussi le prix de l'alerte et previent
 une fois si un objectif de gain ou un stop est atteint (cf. exit_rules.py).
 
@@ -57,6 +60,15 @@ RSI_BUY, RSI_SELL = 15, 85
 MACD_BUY, MACD_SELL = 15, 85
 FNG_CRYPTO_BUY, FNG_CRYPTO_SELL = 15, 85
 HOME_BUY, HOME_SELL = 15, 85
+
+# Niveau "modere" de l'ACHAT uniquement (03/10/2026) : les 3 indicateurs a 20
+# ou moins (sans que les 3 soient a 15 ou moins, ce qui reste le signal
+# "fort", inchange). Mesure sur BTC/ETH en bougies 15 min (365 j) : ~4x plus
+# d'alertes d'achat, avantage divise par ~2 mais encore au-dessus de la
+# reference ; a 25/75 et en vote 2 sur 3 l'avantage disparait. La VENTE
+# n'est pas assouplie (aucune donnee ne le justifie ; la sortie est couverte
+# par exit_rules.py).
+MODERATE_BUY = 20
 
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
@@ -120,6 +132,44 @@ def classify(score, buy_threshold, sell_threshold):
     if score >= sell_threshold:
         return "sell"
     return "neutral"
+
+
+def combine_signal(zones, scores):
+    """Signal combine d'un symbole -> (etat, niveau).
+
+    zones  : zones des 3 indicateurs aux seuils FORTS (15/85)
+    scores : scores bruts 0-100 des 3 indicateurs (None si indisponible)
+    Renvoie ("buy"|"sell", "strong") si les 3 zones concordent ; sinon
+    ("buy", "moderate") si les 3 scores sont <= MODERATE_BUY ; sinon
+    ("neutral", None). Un score manquant empeche tout signal modere."""
+    z = set(zones)
+    if z == {"buy"}:
+        return "buy", "strong"
+    if z == {"sell"}:
+        return "sell", "strong"
+    if all(s is not None and s <= MODERATE_BUY for s in scores):
+        return "buy", "moderate"
+    return "neutral", None
+
+
+def is_upgrade(previous_state, previous_level, result):
+    """Signal d'achat MODERE devenu FORT sans quitter l'etat achat : meme etat
+    combine, donc pas de "transition" -- sans ce cas particulier, le passage
+    au niveau fort resterait invisible apres l'alerte moderee."""
+    return (
+        result["combined"] == "buy" and previous_state == "buy"
+        and previous_level == "moderate" and result.get("level") == "strong"
+    )
+
+
+def episode_level(previous_state, previous_level, result):
+    """Niveau a memoriser dans l'etat : le PLUS HAUT atteint pendant l'episode
+    d'achat en cours. Sans ca, un signal qui oscille autour du seuil fort
+    (fort -> modere -> fort) renverrait une alerte "renforce" a chaque
+    aller-retour."""
+    if result["combined"] == "buy" and previous_state == "buy" and previous_level == "strong":
+        return "strong"
+    return result.get("level")
 
 
 def compute_rsi(closes, period=14):
@@ -313,18 +363,32 @@ def send_telegram(session, message):
     r.raise_for_status()
 
 
-def build_message(result):
-    emoji = "🟢 SIGNAL D'ACHAT" if result["combined"] == "buy" else "🔴 SIGNAL DE VENTE"
+def signal_title(result, upgrade=False):
+    """Titre + ligne d'explication du niveau (partage avec trading_alert_eu.py)."""
+    if result["combined"] == "sell":
+        return "🔴 SIGNAL DE VENTE", None
+    level = result.get("level") or "strong"
+    if upgrade:
+        return "🟢 SIGNAL D'ACHAT RENFORCÉ → FORT", f"Les 3 indicateurs sont maintenant à {RSI_BUY} ou moins."
+    if level == "moderate":
+        return ("🟢 SIGNAL D'ACHAT MODÉRÉ",
+                f"Les 3 indicateurs sont à {MODERATE_BUY} ou moins (le signal fort exige {RSI_BUY} ou moins).")
+    return "🟢 SIGNAL D'ACHAT FORT", f"Les 3 indicateurs sont à {RSI_BUY} ou moins."
+
+
+def build_message(result, upgrade=False):
+    titre, explication = signal_title(result, upgrade)
     lines = [
-        f"⚡ <b>Trading CT</b> — {emoji}",
+        f"⚡ <b>Trading CT</b> — {titre}",
         f"{result['display']} ({result['symbol']}) — prix actuel : {result['price']}",
         "",
         f"• RSI(14) : {result['rsi']}",
         f"• MACD score (14) : {result['macd_score']}",
         f"• Fear & Greed (14) : {result['fng']}",
-        "",
-        "Signal technique automatise, pas un conseil financier. Decision et execution manuelles.",
     ]
+    if explication:
+        lines += ["", explication]
+    lines += ["", "Signal technique automatise, pas un conseil financier. Decision et execution manuelles."]
     return "\n".join(lines)
 
 
@@ -358,18 +422,13 @@ def evaluate_symbol(session, item, crypto_fng_score):
         f"F&G={fng_score} ({fng_zone})"
     )
 
-    zones = {rsi_zone, macd_zone, fng_zone}
-    if zones == {"buy"}:
-        combined = "buy"
-    elif zones == {"sell"}:
-        combined = "sell"
-    else:
-        combined = "neutral"
+    combined, level = combine_signal((rsi_zone, macd_zone, fng_zone), (rsi_score, macd_sc, fng_score))
 
     return {
         "symbol": symbol,
         "display": item["display"],
         "combined": combined,
+        "level": level,
         "price": closes[-1],
         "rsi": rsi_score,
         "macd_score": macd_sc,
@@ -420,16 +479,19 @@ def main():
 
         symbol = result["symbol"]
         previous = state.get(symbol, {}).get("combined_state", "neutral")
+        previous_level = state.get(symbol, {}).get("level")
         new_alert = result["combined"] if (
             result["combined"] in ("buy", "sell") and result["combined"] != previous
         ) else None
+        upgrade = is_upgrade(previous, previous_level, result)
         alert_sent = False
 
-        if new_alert:
+        if new_alert or upgrade:
             try:
-                send_telegram(session, build_message(result))
+                send_telegram(session, build_message(result, upgrade=upgrade))
                 alert_sent = True
-                print(f"Alerte envoyee pour {symbol}: {result['combined']}")
+                detail = "renforcee" if upgrade else (result.get("level") or "")
+                print(f"Alerte envoyee pour {symbol}: {result['combined']} {detail}".rstrip())
             except Exception as e:
                 # Audit du 30/08/2026 : ce `continue` sautait la mise a jour
                 # de l'etat, PRECISEMENT le comportement que le bot BTC a ete
@@ -470,6 +532,9 @@ def main():
                 alerte_echouee = True
 
         state[symbol] = {"combined_state": result["combined"]}
+        level = episode_level(previous, previous_level, result)
+        if level:
+            state[symbol]["level"] = level
         if entry:
             state[symbol]["entry"] = entry
 

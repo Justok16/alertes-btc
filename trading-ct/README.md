@@ -30,8 +30,25 @@ buy & hold sur deux periodes independantes (2018-2021 et 2022-2026).
 
 **Une alerte n'est envoyee que si les 3 indicateurs sont d'accord** (unanimite,
 pas de vote a 2 sur 3) sur le meme sens, ET que cet etat combine vient de
-changer par rapport a la derniere execution. Seuils volontairement stricts :
-signaux rares, mais les 3 confirmations doivent converger.
+changer par rapport a la derniere execution. Les 3 confirmations doivent
+converger.
+
+### Deux niveaux pour l'achat (depuis le 03/10/2026)
+
+- **Signal d'achat FORT** : les 3 indicateurs a **15 ou moins** (la regle
+  d'origine, inchangee, rare).
+- **Signal d'achat MODERE** : les 3 indicateurs a **20 ou moins** sans que les
+  3 soient a 15 ou moins. Mesure sur BTC/ETH en bougies 15 min (365 j) : ~4x
+  plus d'alertes (une a deux par semaine et par crypto au lieu d'une a deux
+  par mois), avantage environ divise par 2 mais encore au-dessus de la
+  reference ; a 25/75 et en vote 2 sur 3 l'avantage disparait, d'ou le
+  plafond a 20. Echantillon d'une seule annee (dont 91 jours en "peur
+  extreme"), a prendre comme un repere. Non mesure sur actions/ETF.
+- Si un signal modere devient fort, une alerte **"RENFORCE -> FORT"** est
+  envoyee (une seule fois par episode, meme si le signal oscille ensuite
+  autour de 15). Une redescente fort -> modere ne declenche rien.
+- La **vente** n'est PAS assouplie (85 inchange) : aucune donnee ne le
+  justifie, et la sortie est couverte par les regles ci-dessous.
 
 ## Regles de sortie (objectif / stop)
 
@@ -125,7 +142,9 @@ Sans les cles Alpaca, les symboles `stock`/`etf` sont simplement ignores
   GitHub Actions reste sujet a des retards occasionnels, et les indicateurs
   restent calcules sur des bougies 15 min -- ca correspond plutot a du
   swing court/moyen terme (positions de quelques heures a quelques jours).
-- Les seuils stricts (15/85, 10/85) rendent les alertes rares par design.
+- Les seuils stricts (15/85 fort, 20 modere a l'achat) rendent les alertes
+  peu frequentes ; sur crypto, la vente est quasi impossible (Fear & Greed
+  >= 85 : aucun jour sur l'annee ecoulee) -- d'ou les regles de sortie.
 - Ne tient pas compte des jours feries du marche US : dans ce cas Alpaca ne
   renvoie simplement pas de nouvelle bougie, l'actif est ignore sans
   consequence.

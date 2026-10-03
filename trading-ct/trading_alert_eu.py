@@ -22,7 +22,8 @@ import exit_rules  # noqa: E402
 from eu_watchlist import EU_WATCHLIST  # noqa: E402
 from trading_alert import (  # noqa: E402
     HOME_BUY, HOME_SELL, MACD_BUY, MACD_SELL, RSI_BUY, RSI_SELL,
-    classify, compute_rsi, get_with_retry, home_score, macd_score, send_telegram,
+    classify, combine_signal, compute_rsi, episode_level, get_with_retry, home_score,
+    is_upgrade, macd_score, send_telegram, signal_title,
 )
 
 import json
@@ -125,18 +126,19 @@ def save_state(state):
     os.replace(tmp, STATE_FILE)
 
 
-def build_message(result):
-    emoji = "🟢 SIGNAL D'ACHAT" if result["combined"] == "buy" else "🔴 SIGNAL DE VENTE"
+def build_message(result, upgrade=False):
+    titre, explication = signal_title(result, upgrade)
     lines = [
-        f"🇪🇺 <b>Trading CT — ETF Europe</b> — {emoji}",
+        f"🇪🇺 <b>Trading CT — ETF Europe</b> — {titre}",
         f"{result['display']} ({result['symbol']}) — prix actuel : {result['price']}",
         "",
         f"• RSI(14) : {result['rsi']}",
         f"• MACD score (14) : {result['macd_score']}",
         f"• Score maison (14) : {result['home_score']}",
-        "",
-        "Signal technique automatise, pas un conseil financier. Decision et execution manuelles.",
     ]
+    if explication:
+        lines += ["", explication]
+    lines += ["", "Signal technique automatise, pas un conseil financier. Decision et execution manuelles."]
     return "\n".join(lines)
 
 
@@ -162,18 +164,13 @@ def evaluate_symbol(session, item):
         f"Score maison={home_sc} ({home_zone})"
     )
 
-    zones = {rsi_zone, macd_zone, home_zone}
-    if zones == {"buy"}:
-        combined = "buy"
-    elif zones == {"sell"}:
-        combined = "sell"
-    else:
-        combined = "neutral"
+    combined, level = combine_signal((rsi_zone, macd_zone, home_zone), (rsi_score, macd_sc, home_sc))
 
     return {
         "symbol": symbol,
         "display": item["display"],
         "combined": combined,
+        "level": level,
         "price": closes[-1],
         "rsi": rsi_score,
         "macd_score": macd_sc,
@@ -195,16 +192,19 @@ def main():
 
         symbol = result["symbol"]
         previous = state.get(symbol, {}).get("combined_state", "neutral")
+        previous_level = state.get(symbol, {}).get("level")
         new_alert = result["combined"] if (
             result["combined"] in ("buy", "sell") and result["combined"] != previous
         ) else None
+        upgrade = is_upgrade(previous, previous_level, result)
         alert_sent = False
 
-        if new_alert:
+        if new_alert or upgrade:
             try:
-                send_telegram(session, build_message(result))
+                send_telegram(session, build_message(result, upgrade=upgrade))
                 alert_sent = True
-                print(f"Alerte envoyee pour {symbol}: {result['combined']}")
+                detail = "renforcee" if upgrade else (result.get("level") or "")
+                print(f"Alerte envoyee pour {symbol}: {result['combined']} {detail}".rstrip())
             except Exception as e:
                 # Audit du 30/08/2026 (meme correctif que trading_alert.py) :
                 # l'ancien `continue` sautait la mise a jour de l'etat --
@@ -238,6 +238,9 @@ def main():
                 alerte_echouee = True
 
         state[symbol] = {"combined_state": result["combined"]}
+        level = episode_level(previous, previous_level, result)
+        if level:
+            state[symbol]["level"] = level
         if entry:
             state[symbol]["entry"] = entry
 
