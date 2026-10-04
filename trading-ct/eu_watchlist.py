@@ -2,7 +2,7 @@
 Actifs non couverts par Alpaca (Europe, Chine continentale...) suivis via
 EODHD (necessite EODHD_API_TOKEN). Verifies une fois par jour seulement --
 le tier gratuit EODHD est limite a 20 appels API/jour, donc ce fichier est
-volontairement tenu court (12 symboles = 12 appels/jour).
+volontairement tenu court (13 symboles = 13 appels/jour).
 
 Format des symboles : <TICKER>.<EXCHANGE_CODE> tel qu'attendu par l'API
 EODHD, verifie via /api/search/<query> avant tout ajout -- le code de
@@ -36,4 +36,7 @@ EU_WATCHLIST = [
     # Ajoute le 04/10/2026 (ISIN IE00BDVPNG13, cote Xetra en EUR depuis 2019).
     # Code WTI2.XETRA non verifie avec eodhd_probe.py (pas de token en session).
     {"symbol": "WTI2.XETRA", "display": "WisdomTree Artificial Intelligence UCITS ETF (WTI2)"},
+    # Ajoute le 04/10/2026 (ISIN IE00BK5BCD43, cote Xetra en EUR, ticker XMLD).
+    # Code XMLD.XETRA non verifie avec eodhd_probe.py (pas de token en session).
+    {"symbol": "XMLD.XETRA", "display": "L&G Artificial Intelligence UCITS ETF (XMLD)"},
 ]
