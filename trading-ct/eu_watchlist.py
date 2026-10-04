@@ -2,7 +2,7 @@
 Actifs non couverts par Alpaca (Europe, Chine continentale...) suivis via
 EODHD (necessite EODHD_API_TOKEN). Verifies une fois par jour seulement --
 le tier gratuit EODHD est limite a 20 appels API/jour, donc ce fichier est
-volontairement tenu court (10 symboles = 10 appels/jour).
+volontairement tenu court (11 symboles = 11 appels/jour).
 
 Format des symboles : <TICKER>.<EXCHANGE_CODE> tel qu'attendu par l'API
 EODHD, verifie via /api/search/<query> avant tout ajout -- le code de
@@ -29,4 +29,8 @@ EU_WATCHLIST = [
     {"symbol": "4BY.F", "display": "BYD Electronic (4BY)"},
     {"symbol": "AIFS.XETRA", "display": "iShares AI Infrastructure UCITS ETF (AIFS)"},
     {"symbol": "LGI.F", "display": "Legal & General Group (LGI)"},
+    # Ajoute le 04/10/2026 (ISIN IE00BGV5VN51, cote Xetra en EUR). Code
+    # XAIX.XETRA pas encore verifie avec eodhd_probe.py (pas de token dans la
+    # session d'ajout) : a lancer pour confirmer le cours.
+    {"symbol": "XAIX.XETRA", "display": "Xtrackers Artificial Intelligence & Big Data UCITS ETF 1C (XAIX)"},
 ]
