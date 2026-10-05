@@ -31,4 +31,14 @@ WATCHLIST = [
     # par defaut des actions (+6 %/-4 %) serait declenchee par le simple bruit
     # du cours. Niveaux plus larges, de bon sens et NON testes (a ajuster).
     {"symbol": "HUT", "display": "Hut 8 (HUT)", "asset_class": "stock", "exit_rule": (12, 8)},
+    # Ajoutees le 05/10/2026 depuis un reel Instagram (Kelvin Bonneau, 30/09/2026) :
+    # 7 actions pour jouer les couches de l'IA (refroidissement, compute, energie).
+    # Regle de sortie par defaut des actions (+6 % / -4 %), NON testee.
+    {"symbol": "SCCO", "display": "Southern Copper (SCCO)", "asset_class": "stock"},
+    {"symbol": "MOD", "display": "Modine Manufacturing (MOD)", "asset_class": "stock"},
+    {"symbol": "GEV", "display": "GE Vernova (GEV)", "asset_class": "stock"},
+    {"symbol": "LITE", "display": "Lumentum (LITE)", "asset_class": "stock"},
+    {"symbol": "VRT", "display": "Vertiv (VRT)", "asset_class": "stock"},
+    {"symbol": "AMZN", "display": "Amazon (AMZN)", "asset_class": "stock"},
+    {"symbol": "MRVL", "display": "Marvell Technology (MRVL)", "asset_class": "stock"},
 ]
