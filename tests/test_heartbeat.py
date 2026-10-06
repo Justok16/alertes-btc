@@ -49,6 +49,24 @@ class TestVerdict(unittest.TestCase):
         self.assertTrue(degrade)
         self.assertIn("3 exécution(s) crypto/US en échec", msg)
 
+    def test_echecs_runner_non_acquis_distingues_d_un_bug(self):
+        main = main_stats(failures=7)
+        main["runner_unacquired"] = 7
+        degrade, msg = heartbeat.build_message(main, eu_stats(), NOW)
+        self.assertTrue(degrade)
+        self.assertIn("7 exécution(s) crypto/US en échec car GitHub n'a pas fourni de runner", msg)
+        self.assertIn("panne de GitHub Actions", msg)
+        self.assertIn("githubstatus.com", msg)
+        # Tous les echecs s'expliquent par la panne : pas de ligne "echec ordinaire" en plus
+        self.assertNotIn("en échec sur 24 h.", msg)
+
+    def test_echecs_mixtes_runner_et_autres(self):
+        main = main_stats(failures=5)
+        main["runner_unacquired"] = 2
+        _, msg = heartbeat.build_message(main, eu_stats(), NOW)
+        self.assertIn("2 exécution(s) crypto/US en échec car GitHub n'a pas fourni de runner", msg)
+        self.assertIn("3 exécution(s) crypto/US en échec sur 24 h.", msg)
+
     def test_derniere_execution_trop_ancienne(self):
         degrade, msg = heartbeat.build_message(main_stats(minutes=45), eu_stats(), NOW)
         self.assertTrue(degrade)
@@ -96,11 +114,12 @@ def _reponse(payload):
 
 
 class TestApi(unittest.TestCase):
-    def test_workflow_stats_trois_appels_et_filtres(self):
+    def test_workflow_stats_appels_et_filtres(self):
         session = MagicMock()
         session.get.side_effect = [
             _reponse({"total_count": 290}),
             _reponse({"total_count": 2}),
+            _reponse({"workflow_runs": []}),  # diagnostic des echecs (aucun run detaille ici)
             _reponse({"workflow_runs": [{"created_at": "2026-10-05T06:14:03Z", "conclusion": "success",
                                          "status": "completed"}]}),
         ]
@@ -110,7 +129,7 @@ class TestApi(unittest.TestCase):
         self.assertEqual(stats["last_at"], datetime(2026, 10, 5, 6, 14, 3, tzinfo=timezone.utc))
         self.assertEqual(stats["last_conclusion"], "success")
         appels = session.get.call_args_list
-        self.assertEqual(len(appels), 3)
+        self.assertEqual(len(appels), 4)
         self.assertIn("/repos/o/r/actions/workflows/wf.yml/runs", appels[0].args[0])
         self.assertEqual(appels[0].kwargs["params"]["created"], ">=2026-10-04T06:17:00Z")
         self.assertEqual(appels[1].kwargs["params"]["status"], "failure")
@@ -122,6 +141,68 @@ class TestApi(unittest.TestCase):
         stats = heartbeat.workflow_stats(session, "o/r", "wf.yml", NOW)
         self.assertIsNone(stats["last_at"])
         self.assertIsNone(stats["last_conclusion"])
+
+
+class TestRunnerNonAcquis(unittest.TestCase):
+    URL = "https://api.github.com/repos/o/r/actions/workflows/wf.yml/runs"
+
+    def _run(self, i):
+        return {"id": i, "jobs_url": f"https://api.github.com/repos/o/r/actions/runs/{i}/jobs"}
+
+    def _job(self, i):
+        return {"jobs": [{"id": i, "check_run_url": f"https://api.github.com/repos/o/r/check-runs/{i}"}]}
+
+    def test_compte_les_runs_dont_le_runner_n_a_pas_ete_acquis(self):
+        session = MagicMock()
+        session.get.side_effect = [
+            _reponse({"workflow_runs": [self._run(1), self._run(2)]}),
+            _reponse(self._job(11)),
+            _reponse([{"message": "The job was not acquired by Runner of type hosted even after multiple attempts"},
+                      {"message": "The ubuntu-latest label will migrate to Ubuntu 26"}]),
+            _reponse(self._job(22)),
+            _reponse([{"message": "Process completed with exit code 1."}]),  # vrai echec du bot
+        ]
+        self.assertEqual(heartbeat.count_runner_not_acquired(session, self.URL, ">=2026-10-04T00:00:00Z"), 1)
+        self.assertEqual(session.get.call_args_list[0].kwargs["params"]["status"], "failure")
+        self.assertTrue(session.get.call_args_list[2].args[0].endswith("/check-runs/11/annotations"))
+
+    def test_annotation_sans_message_ne_plante_pas(self):
+        session = MagicMock()
+        session.get.side_effect = [_reponse({"workflow_runs": [self._run(1)]}), _reponse(self._job(11)),
+                                   _reponse([{"message": None}, {}])]
+        self.assertEqual(heartbeat.count_runner_not_acquired(session, self.URL, ">=x"), 0)
+
+    def test_erreur_api_n_est_pas_bloquante(self):
+        session = MagicMock()
+        session.get.side_effect = RuntimeError("boom")
+        self.assertEqual(heartbeat.count_runner_not_acquired(session, self.URL, ">=x"), 0)
+
+    def test_plafond_de_runs_inspectes(self):
+        session = MagicMock()
+        runs = [self._run(i) for i in range(heartbeat.MAX_RUNS_INSPECTED + 5)]
+        session.get.side_effect = [_reponse({"workflow_runs": runs})] + [
+            r for _ in range(heartbeat.MAX_RUNS_INSPECTED) for r in (_reponse({"jobs": []}),)]
+        heartbeat.count_runner_not_acquired(session, self.URL, ">=x")
+        self.assertEqual(session.get.call_count, 1 + heartbeat.MAX_RUNS_INSPECTED)
+
+    def test_workflow_stats_n_inspecte_rien_sans_echec(self):
+        session = MagicMock()
+        session.get.side_effect = [_reponse({"total_count": 288}), _reponse({"total_count": 0}),
+                                   _reponse({"workflow_runs": []})]
+        stats = heartbeat.workflow_stats(session, "o/r", "wf.yml", NOW)
+        self.assertEqual(stats["runner_unacquired"], 0)
+        self.assertEqual(session.get.call_count, 3)
+
+    def test_workflow_stats_expose_le_compteur(self):
+        session = MagicMock()
+        session.get.side_effect = [
+            _reponse({"total_count": 291}), _reponse({"total_count": 1}),
+            _reponse({"workflow_runs": [self._run(1)]}), _reponse(self._job(11)),
+            _reponse([{"message": "The job was not acquired by Runner of type hosted"}]),
+            _reponse({"workflow_runs": []}),
+        ]
+        stats = heartbeat.workflow_stats(session, "o/r", "wf.yml", NOW)
+        self.assertEqual((stats["failures"], stats["runner_unacquired"]), (1, 1))
 
 
 class TestMain(unittest.TestCase):
