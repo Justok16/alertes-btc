@@ -8,9 +8,11 @@ on:
     - cron: "17 6 * * *"
   workflow_dispatch: {}
 
-# Lecture seule : le job ne fait que lire l'API des executions GitHub Actions.
+# Lecture seule : le job ne fait que lire l'API des executions GitHub Actions
+# (checks: lire les annotations d'un job, pour reconnaitre un echec "runner non acquis").
 permissions:
   actions: read
+  checks: read
   contents: read
 
 concurrency:

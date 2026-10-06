@@ -11,7 +11,9 @@ externe s'arrete (cle expiree, service coupe...), plus rien n'avertit : le bot
 
 Ce que le message signale (titre ⚠️ au lieu de 🟢) :
   - moins de WARN_MAIN_BELOW executions crypto/US en 24 h (attendu ~288) ;
-  - au moins une execution en echec sur 24 h ;
+  - au moins une execution en echec sur 24 h (avec la cause "GitHub n'a pas
+    fourni de runner" distinguee d'un vrai echec du bot : c'est une panne de
+    GitHub Actions, le script n'a meme pas demarre) ;
   - derniere execution crypto/US vieille de plus de 30 min ;
   - bot Europe/Chine non execute depuis plus de EU_MAX_AGE_HOURS h (3 j 12 h :
     couvre un week-end) ou derniere execution en echec.
@@ -46,6 +48,12 @@ WARN_MAIN_BELOW = 200            # ~70 % : en dessous, la cadence est degradee
 MAIN_MAX_AGE = timedelta(minutes=30)
 EU_MAX_AGE = timedelta(hours=84)  # vendredi 18:00 -> lundi 18:00 + marge
 
+# Message d'annotation que GitHub ajoute a un job qu'aucun runner n'a pris en
+# charge (panne GitHub Actions) : le job reste ~15 min sans aucune etape puis
+# est marque en echec.
+RUNNER_NOT_ACQUIRED = "not acquired by Runner"
+MAX_RUNS_INSPECTED = 10          # plafond d'appels API (2 par execution inspectee)
+
 HEADER = "<b>Trading CT</b>"
 
 
@@ -62,17 +70,43 @@ def _parse(ts):
     return datetime.fromisoformat(ts.replace("Z", "+00:00")) if ts else None
 
 
+def count_runner_not_acquired(session, url, created):
+    """Parmi les executions en echec, combien le sont car GitHub n'a fourni aucun
+    runner (lecture des annotations des jobs). Au plus MAX_RUNS_INSPECTED
+    executions inspectees. Jamais bloquant : en cas d'erreur de l'API, renvoie 0
+    (l'echec reste compte comme un echec ordinaire)."""
+    try:
+        runs = _get(session, url, {"created": created, "status": "failure",
+                                   "per_page": MAX_RUNS_INSPECTED}).get("workflow_runs") or []
+        n = 0
+        for run in runs[:MAX_RUNS_INSPECTED]:
+            jobs = _get(session, run["jobs_url"], {}).get("jobs") or []
+            if any(
+                RUNNER_NOT_ACQUIRED in (a.get("message") or "")
+                for job in jobs
+                for a in _get(session, f"{job['check_run_url']}/annotations", {})
+            ):
+                n += 1
+        return n
+    except Exception as e:  # noqa: BLE001 - diagnostic annexe, ne doit pas casser le heartbeat
+        print(f"[heartbeat] diagnostic des echecs impossible : {e}", file=sys.stderr)
+        return 0
+
+
 def workflow_stats(session, repo, workflow, since):
-    """Compteurs sur 24 h + derniere execution d'un workflow (3 appels API)."""
+    """Compteurs sur 24 h + derniere execution d'un workflow (3 appels API, plus
+    2 par execution en echec inspectee)."""
     url = RUNS_URL.format(repo=repo, workflow=workflow)
     created = f">={since.strftime('%Y-%m-%dT%H:%M:%SZ')}"
     total = _get(session, url, {"created": created, "per_page": 1})["total_count"]
     failures = _get(session, url, {"created": created, "status": "failure", "per_page": 1})["total_count"]
+    runner_unacquired = count_runner_not_acquired(session, url, created) if failures else 0
     runs = _get(session, url, {"per_page": 1}).get("workflow_runs") or []
     last = runs[0] if runs else None
     return {
         "total": total,
         "failures": failures,
+        "runner_unacquired": runner_unacquired,
         "last_at": _parse(last["created_at"]) if last else None,
         "last_conclusion": (last.get("conclusion") or last.get("status")) if last else None,
     }
@@ -102,8 +136,16 @@ def build_message(main, eu, now, repo=REPO):
             "Le déclencheur externe toutes les 5 min s'est peut-être arrêté ; GitHub seul ne lance le bot "
             "que toutes les ~4 h."
         )
-    if main["failures"]:
-        alertes.append(f"{main['failures']} exécution(s) crypto/US en échec sur 24 h.")
+    runner = min(main.get("runner_unacquired", 0), main["failures"])
+    if runner:
+        alertes.append(
+            f"{runner} exécution(s) crypto/US en échec car GitHub n'a pas fourni de runner "
+            "(« not acquired by Runner ») : panne de GitHub Actions, pas un bug du bot. "
+            "Pendant ce temps, aucune vérification n'a eu lieu. Voir githubstatus.com."
+        )
+    autres = main["failures"] - runner
+    if autres:
+        alertes.append(f"{autres} exécution(s) crypto/US en échec sur 24 h.")
     if main["last_at"] is None or now - main["last_at"] > MAIN_MAX_AGE:
         alertes.append(f"Dernière exécution crypto/US : {ago(now, main['last_at'])} (plus de 30 min).")
 
