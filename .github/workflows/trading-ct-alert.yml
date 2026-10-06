@@ -50,6 +50,9 @@ jobs:
           # Git ci-dessous -- absents, comportement strictement inchange.
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          # Optionnel : URL de ping healthchecks.io (alerte PENDANT une panne
+          # GitHub, cf. README). Secret absent -> chaine vide -> desactive.
+          HEALTHCHECK_URL: ${{ secrets.HEALTHCHECK_URL }}
         run: python trading_alert.py
 
       - name: Commit updated state

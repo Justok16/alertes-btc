@@ -74,6 +74,13 @@ TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
 ALPACA_API_KEY_ID = os.environ.get("ALPACA_API_KEY_ID")
 ALPACA_API_SECRET_KEY = os.environ.get("ALPACA_API_SECRET_KEY")
+# Optionnel : URL de "ping" d'un service externe de surveillance (healthchecks.io,
+# gratuit). Le bot l'appelle a chaque cycle ; si les appels s'arretent (panne
+# GitHub "runner non acquis", paiement echoue, declencheur externe coupe...),
+# c'est LE SERVICE qui previent -- seul moyen d'etre alerte PENDANT la panne,
+# puisqu'aucun workflow GitHub ne peut tourner sans runner. Vide = desactive.
+HEALTHCHECK_URL = os.environ.get("HEALTHCHECK_URL", "").strip()
+HEALTHCHECK_TIMEOUT = 5
 
 BINANCE_KLINES_URL = "https://data-api.binance.vision/api/v3/klines"
 ALPACA_BARS_URL = "https://data.alpaca.markets/v2/stocks/{symbol}/bars"
@@ -359,6 +366,19 @@ def save_state(state):
     os.replace(tmp, STATE_FILE)
 
 
+def ping_healthcheck(session):
+    """Signal de vie au service externe (si HEALTHCHECK_URL est defini). Jamais
+    bloquant : une erreur reseau ne doit ni retarder ni faire echouer le cycle."""
+    if not HEALTHCHECK_URL:
+        return False
+    try:
+        session.get(HEALTHCHECK_URL, timeout=HEALTHCHECK_TIMEOUT).raise_for_status()
+        return True
+    except Exception as e:  # noqa: BLE001
+        print(f"[healthcheck] ping impossible : {e}", file=sys.stderr)
+        return False
+
+
 def send_telegram(session, message):
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         print("Secrets Telegram manquants, message non envoye:\n" + message)
@@ -626,6 +646,7 @@ def main():
     meta["last_run_at"] = debut_cycle.isoformat()
 
     save_state(state)
+    ping_healthcheck(session)
 
     if alerte_echouee:
         sys.exit(1)
