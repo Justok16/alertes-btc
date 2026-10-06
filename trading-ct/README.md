@@ -162,6 +162,24 @@ avec la durée du trou. Au plus une alerte par 6 h (si seul le cron GitHub, ~4 h
 tourne, chaque cycle verrait un trou). Le message de 6 h 17 UTC précise ensuite
 la cause (échecs « runner non acquis » comptés à part).
 
+## Être alerté PENDANT une panne (healthchecks.io, optionnel)
+
+Quand GitHub ne fournit aucun runner (« not acquired by Runner »), qu'un
+paiement échoue ou que le déclencheur externe s'arrête, **aucun workflow ne peut
+tourner, donc aucun workflow ne peut prévenir**. L'alerte d'interruption du bot
+n'arrive qu'à la reprise. Pour être prévenu *pendant* la panne, un service
+externe surveille les signes de vie du bot (« dead man's switch ») :
+
+1. Créer un compte gratuit sur [healthchecks.io](https://healthchecks.io) et un
+   check : *Period* = 5 minutes, *Grace time* = 15 minutes.
+2. Dans ses *Integrations*, brancher Telegram (ou l'e-mail) : c'est lui qui
+   enverra l'alerte « le bot ne répond plus » environ 20 min après le dernier cycle.
+3. Copier l'URL de ping du check et l'ajouter comme secret GitHub
+   **`HEALTHCHECK_URL`** (Settings > Secrets and variables > Actions).
+
+Le bot appelle cette URL à la fin de chaque cycle (délai maximum 5 s, jamais
+bloquant). Secret absent : aucun appel, comportement inchangé.
+
 ## Test complet des alertes (`telegram_demo.py`)
 
 Workflow **Trading CT Backtest (actions/ETF)** -> script `telegram_demo.py`.
