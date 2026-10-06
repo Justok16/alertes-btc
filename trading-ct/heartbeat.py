@@ -52,6 +52,13 @@ EU_MAX_AGE = timedelta(hours=84)  # vendredi 18:00 -> lundi 18:00 + marge
 # charge (panne GitHub Actions) : le job reste ~15 min sans aucune etape puis
 # est marque en echec.
 RUNNER_NOT_ACQUIRED = "not acquired by Runner"
+# Autre cause d'echec qui n'a rien a voir avec le code : GitHub refuse de DEMARRER
+# les jobs quand un paiement a echoue ou que le plafond de depenses Actions est
+# atteint ("The job was not started because recent account payments have failed
+# or your spending limit needs to be increased"). Vu le 05/10/2026 de 9 h a 11 h
+# UTC (52 executions refusees sur le depot pokedeals) et le 20/08 ici. Seul le
+# proprietaire du compte peut le resoudre (Settings > Billing).
+BILLING_BLOCKED = ("payments have failed", "spending limit")
 MAX_RUNS_INSPECTED = 10          # plafond d'appels API (2 par execution inspectee)
 
 HEADER = "<b>Trading CT</b>"
@@ -70,27 +77,30 @@ def _parse(ts):
     return datetime.fromisoformat(ts.replace("Z", "+00:00")) if ts else None
 
 
-def count_runner_not_acquired(session, url, created):
-    """Parmi les executions en echec, combien le sont car GitHub n'a fourni aucun
-    runner (lecture des annotations des jobs). Au plus MAX_RUNS_INSPECTED
-    executions inspectees. Jamais bloquant : en cas d'erreur de l'API, renvoie 0
-    (l'echec reste compte comme un echec ordinaire)."""
+def count_failure_causes(session, url, created):
+    """Parmi les executions en echec, repere celles qui ne viennent PAS du code :
+    {"runner_unacquired": n, "billing_blocked": m} (lecture des annotations des
+    jobs). Au plus MAX_RUNS_INSPECTED executions inspectees. Jamais bloquant :
+    en cas d'erreur de l'API, renvoie des zeros (l'echec reste un echec ordinaire)."""
+    causes = {"runner_unacquired": 0, "billing_blocked": 0}
     try:
         runs = _get(session, url, {"created": created, "status": "failure",
                                    "per_page": MAX_RUNS_INSPECTED}).get("workflow_runs") or []
-        n = 0
         for run in runs[:MAX_RUNS_INSPECTED]:
             jobs = _get(session, run["jobs_url"], {}).get("jobs") or []
-            if any(
-                RUNNER_NOT_ACQUIRED in (a.get("message") or "")
+            messages = [
+                a.get("message") or ""
                 for job in jobs
                 for a in _get(session, f"{job['check_run_url']}/annotations", {})
-            ):
-                n += 1
-        return n
+            ]
+            if any(RUNNER_NOT_ACQUIRED in m for m in messages):
+                causes["runner_unacquired"] += 1
+            elif any(k in m for m in messages for k in BILLING_BLOCKED):
+                causes["billing_blocked"] += 1
     except Exception as e:  # noqa: BLE001 - diagnostic annexe, ne doit pas casser le heartbeat
         print(f"[heartbeat] diagnostic des echecs impossible : {e}", file=sys.stderr)
-        return 0
+        return {"runner_unacquired": 0, "billing_blocked": 0}
+    return causes
 
 
 def workflow_stats(session, repo, workflow, since):
@@ -100,13 +110,15 @@ def workflow_stats(session, repo, workflow, since):
     created = f">={since.strftime('%Y-%m-%dT%H:%M:%SZ')}"
     total = _get(session, url, {"created": created, "per_page": 1})["total_count"]
     failures = _get(session, url, {"created": created, "status": "failure", "per_page": 1})["total_count"]
-    runner_unacquired = count_runner_not_acquired(session, url, created) if failures else 0
+    causes = count_failure_causes(session, url, created) if failures else {"runner_unacquired": 0,
+                                                                          "billing_blocked": 0}
     runs = _get(session, url, {"per_page": 1}).get("workflow_runs") or []
     last = runs[0] if runs else None
     return {
         "total": total,
         "failures": failures,
-        "runner_unacquired": runner_unacquired,
+        "runner_unacquired": causes["runner_unacquired"],
+        "billing_blocked": causes["billing_blocked"],
         "last_at": _parse(last["created_at"]) if last else None,
         "last_conclusion": (last.get("conclusion") or last.get("status")) if last else None,
     }
@@ -143,7 +155,14 @@ def build_message(main, eu, now, repo=REPO):
             "(« not acquired by Runner ») : panne de GitHub Actions, pas un bug du bot. "
             "Pendant ce temps, aucune vérification n'a eu lieu. Voir githubstatus.com."
         )
-    autres = main["failures"] - runner
+    billing = min(main.get("billing_blocked", 0), main["failures"] - runner)
+    if billing:
+        alertes.append(
+            f"{billing} exécution(s) crypto/US refusée(s) par GitHub : paiement échoué ou plafond de "
+            "dépenses Actions atteint (« spending limit »). À régler sans attendre dans GitHub > "
+            "Settings > Billing : tant que ce n'est pas fait, le bot peut s'arrêter."
+        )
+    autres = main["failures"] - runner - billing
     if autres:
         alertes.append(f"{autres} exécution(s) crypto/US en échec sur 24 h.")
     if main["last_at"] is None or now - main["last_at"] > MAIN_MAX_AGE:

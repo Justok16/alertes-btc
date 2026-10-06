@@ -478,8 +478,9 @@ def interruption_message(meta, now):
         f"Aucune vérification entre {precedent.astimezone(timezone.utc).strftime(fmt)} et "
         f"{now.astimezone(timezone.utc).strftime(fmt)} UTC (≈ {_fmt_duree(trou)}). "
         "Un signal apparu et disparu pendant ce trou n'a pas pu être détecté.\n"
-        "Causes fréquentes : panne de GitHub Actions (« runner non acquis », voir githubstatus.com) "
-        "ou déclencheur externe toutes les 5 min arrêté. Le message de 6 h 17 UTC en précisera la cause."
+        "Causes fréquentes : panne de GitHub Actions (« runner non acquis », voir githubstatus.com), "
+        "paiement échoué ou plafond de dépenses Actions atteint (GitHub > Settings > Billing) ou "
+        "déclencheur externe toutes les 5 min arrêté. Le message de 6 h 17 UTC en précisera la cause."
     )
 
 

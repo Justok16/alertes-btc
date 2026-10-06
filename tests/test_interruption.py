@@ -41,6 +41,7 @@ class TestInterruptionMessage(unittest.TestCase):
         self.assertIn("1 h 45", msg)
         self.assertIn("runner non acquis", msg)
         self.assertIn("githubstatus.com", msg)
+        self.assertIn("Settings > Billing", msg)
 
     def test_duree_en_minutes_sous_90_min(self):
         msg = trading_alert.interruption_message(meta_il_y_a(minutes=45), NOW)
