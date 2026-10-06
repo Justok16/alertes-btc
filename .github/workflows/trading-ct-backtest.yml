@@ -19,9 +19,19 @@ on:
         required: false
         default: "SPY QQQ"
 
+# Lecture seule du depot (le script n'ecrit rien) et un seul backtest a la fois :
+# ce workflow manipule des secrets (Alpaca, EODHD, Telegram).
+permissions:
+  contents: read
+
+concurrency:
+  group: trading-ct-backtest
+  cancel-in-progress: false
+
 jobs:
   backtest-stocks:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: trading-ct
@@ -33,6 +43,8 @@ jobs:
         uses: actions/setup-python@v7
         with:
           python-version: "3.12"
+          cache: pip
+          cache-dependency-path: trading-ct/requirements.txt
 
       - name: Install dependencies
         run: pip install -r requirements.txt

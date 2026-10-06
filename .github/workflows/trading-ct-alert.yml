@@ -18,6 +18,7 @@ concurrency:
 jobs:
   check-trading-ct:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: write
     defaults:
@@ -31,6 +32,8 @@ jobs:
         uses: actions/setup-python@v7
         with:
           python-version: "3.12"
+          cache: pip
+          cache-dependency-path: trading-ct/requirements.txt
 
       - name: Install dependencies
         run: pip install -r requirements.txt

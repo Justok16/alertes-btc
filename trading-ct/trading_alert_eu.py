@@ -5,8 +5,8 @@ via l'API EODHD (donnees journalieres ajustees splits/dividendes).
 Meme logique que trading_alert.py (RSI(14) + MACD normalise(14) + score
 maison(14), unanimite, seuils 15/85), mais verification une seule fois par
 jour : le tier gratuit EODHD est limite a 20 appels API/jour, incompatible
-avec le cron 15 min du reste du bot (4 ETF x plusieurs verifications/jour
-depasserait vite le quota). Un ETF est de toute facon un horizon plus
+avec le cron 5 min du reste du bot (chaque ETF coute un appel par
+verification : plusieurs verifications/jour depasseraient vite le quota). Un ETF est de toute facon un horizon plus
 moyen terme qu'un check quotidien suffit a couvrir.
 
 Ceci est un outil de signal technique, PAS un conseil en investissement.

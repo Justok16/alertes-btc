@@ -67,6 +67,25 @@ class TestVerdict(unittest.TestCase):
         self.assertIn("2 exécution(s) crypto/US en échec car GitHub n'a pas fourni de runner", msg)
         self.assertIn("3 exécution(s) crypto/US en échec sur 24 h.", msg)
 
+    def test_echecs_factures_paiement_ou_plafond_de_depenses(self):
+        main = main_stats(failures=52)
+        main["billing_blocked"] = 52
+        degrade, msg = heartbeat.build_message(main, eu_stats(), NOW)
+        self.assertTrue(degrade)
+        self.assertIn("52 exécution(s) crypto/US refusée(s) par GitHub : paiement échoué ou plafond", msg)
+        self.assertIn("Settings > Billing", msg)
+        self.assertNotIn("en échec sur 24 h.", msg)
+        self.assertNotIn("runner", msg)
+
+    def test_echecs_trois_causes_melangees(self):
+        main = main_stats(failures=10)
+        main["runner_unacquired"] = 3
+        main["billing_blocked"] = 4
+        _, msg = heartbeat.build_message(main, eu_stats(), NOW)
+        self.assertIn("3 exécution(s) crypto/US en échec car GitHub n'a pas fourni de runner", msg)
+        self.assertIn("4 exécution(s) crypto/US refusée(s) par GitHub", msg)
+        self.assertIn("3 exécution(s) crypto/US en échec sur 24 h.", msg)
+
     def test_derniere_execution_trop_ancienne(self):
         degrade, msg = heartbeat.build_message(main_stats(minutes=45), eu_stats(), NOW)
         self.assertTrue(degrade)
@@ -162,27 +181,46 @@ class TestRunnerNonAcquis(unittest.TestCase):
             _reponse(self._job(22)),
             _reponse([{"message": "Process completed with exit code 1."}]),  # vrai echec du bot
         ]
-        self.assertEqual(heartbeat.count_runner_not_acquired(session, self.URL, ">=2026-10-04T00:00:00Z"), 1)
+        self.assertEqual(heartbeat.count_failure_causes(session, self.URL, ">=2026-10-04T00:00:00Z")["runner_unacquired"], 1)
         self.assertEqual(session.get.call_args_list[0].kwargs["params"]["status"], "failure")
         self.assertTrue(session.get.call_args_list[2].args[0].endswith("/check-runs/11/annotations"))
+
+    def test_distingue_runner_paiement_et_vrai_echec(self):
+        session = MagicMock()
+        session.get.side_effect = [
+            _reponse({"workflow_runs": [self._run(1), self._run(2), self._run(3), self._run(4)]}),
+            _reponse(self._job(11)),
+            _reponse([{"message": "The job was not acquired by Runner of type hosted even after multiple attempts"}]),
+            _reponse(self._job(22)),
+            _reponse([{"message": "The job was not started because recent account payments have failed or "
+                                  "your spending limit needs to be increased."}]),
+            _reponse(self._job(33)),
+            _reponse([{"message": "The job was not started because your spending limit needs to be increased"}]),
+            _reponse(self._job(44)),
+            _reponse([{"message": "Process completed with exit code 1."}]),
+        ]
+        self.assertEqual(heartbeat.count_failure_causes(session, self.URL, ">=x"),
+                         {"runner_unacquired": 1, "billing_blocked": 2})
 
     def test_annotation_sans_message_ne_plante_pas(self):
         session = MagicMock()
         session.get.side_effect = [_reponse({"workflow_runs": [self._run(1)]}), _reponse(self._job(11)),
                                    _reponse([{"message": None}, {}])]
-        self.assertEqual(heartbeat.count_runner_not_acquired(session, self.URL, ">=x"), 0)
+        self.assertEqual(heartbeat.count_failure_causes(session, self.URL, ">=x"),
+                         {"runner_unacquired": 0, "billing_blocked": 0})
 
     def test_erreur_api_n_est_pas_bloquante(self):
         session = MagicMock()
         session.get.side_effect = RuntimeError("boom")
-        self.assertEqual(heartbeat.count_runner_not_acquired(session, self.URL, ">=x"), 0)
+        self.assertEqual(heartbeat.count_failure_causes(session, self.URL, ">=x"),
+                         {"runner_unacquired": 0, "billing_blocked": 0})
 
     def test_plafond_de_runs_inspectes(self):
         session = MagicMock()
         runs = [self._run(i) for i in range(heartbeat.MAX_RUNS_INSPECTED + 5)]
         session.get.side_effect = [_reponse({"workflow_runs": runs})] + [
             r for _ in range(heartbeat.MAX_RUNS_INSPECTED) for r in (_reponse({"jobs": []}),)]
-        heartbeat.count_runner_not_acquired(session, self.URL, ">=x")
+        heartbeat.count_failure_causes(session, self.URL, ">=x")
         self.assertEqual(session.get.call_count, 1 + heartbeat.MAX_RUNS_INSPECTED)
 
     def test_workflow_stats_n_inspecte_rien_sans_echec(self):
