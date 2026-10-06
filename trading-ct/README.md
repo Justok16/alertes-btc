@@ -151,6 +151,17 @@ Actions et envoie sur Telegram le nombre d'executions des dernieres 24 h.
 Limite : ce job depend lui-meme du cron GitHub ; un matin sans message est
 donc aussi un signal. Test manuel possible a tout moment (Run workflow).
 
+## Alerte d'interruption du bot
+
+Si GitHub ne fournit aucun runner (« not acquired by Runner », panne du
+05/10/2026 : ~1 h 45 sans cycle) ou si le déclencheur externe s'arrête, aucun
+workflow ne peut prévenir *pendant* la panne. Le bot compare donc l'heure de
+son cycle à celle du précédent (`_meta.last_run_at`) et envoie une alerte
+Telegram **dès la reprise** si le trou dépasse 30 min (cadence normale : 5 min),
+avec la durée du trou. Au plus une alerte par 6 h (si seul le cron GitHub, ~4 h,
+tourne, chaque cycle verrait un trou). Le message de 6 h 17 UTC précise ensuite
+la cause (échecs « runner non acquis » comptés à part).
+
 ## Test complet des alertes (`telegram_demo.py`)
 
 Workflow **Trading CT Backtest (actions/ETF)** -> script `telegram_demo.py`.
