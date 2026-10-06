@@ -30,7 +30,7 @@ import json
 import os
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -92,6 +92,17 @@ HTTP_TIMEOUT = 15
 # faux positif). Cron toutes les 5 min : 12 echecs consecutifs = ~1h de
 # panne avant d'alerter, memes principes que btc_alert.py.
 SEUIL_ECHECS_CRYPTO_CONSECUTIFS = 12
+
+# Interruption du bot : le 05/10/2026, GitHub n'a fourni aucun runner pendant
+# ~1h45 ("not acquired by Runner") -- aucun cycle n'a tourne, donc rien ne
+# pouvait prevenir en direct (un workflow de surveillance sur GitHub serait
+# tombe en panne avec le reste). Le bot compare donc l'heure de son cycle a
+# celle du cycle precedent (`_meta.last_run_at`) et previent des la REPRISE si
+# le trou depasse INTERRUPTION_SEUIL (cadence normale : 5 min). Anti-spam : si
+# le declencheur externe est coupe, seul le cron GitHub (~4 h) tourne et
+# chaque cycle verrait un trou ; au plus une alerte par INTERRUPTION_COOLDOWN.
+INTERRUPTION_SEUIL = timedelta(minutes=30)
+INTERRUPTION_COOLDOWN = timedelta(hours=6)
 
 
 def get_with_retry(session, url, params=None, headers=None, retries=3, backoff=15):
@@ -436,7 +447,44 @@ def evaluate_symbol(session, item, crypto_fng_score):
     }
 
 
+def _fmt_duree(delta):
+    minutes = max(1, round(delta.total_seconds() / 60))
+    if minutes < 90:
+        return f"{minutes} min"
+    return f"{minutes // 60} h {minutes % 60:02d}"
+
+
+def interruption_message(meta, now):
+    """Message d'alerte si le cycle precedent date de plus de INTERRUPTION_SEUIL
+    (et sans alerte du meme type depuis INTERRUPTION_COOLDOWN), sinon None.
+    Pur calcul : ne modifie pas `meta`. Premier cycle (pas de last_run_at) ou
+    horodatage illisible : None."""
+    try:
+        precedent = datetime.fromisoformat(meta["last_run_at"])
+    except (KeyError, TypeError, ValueError):
+        return None
+    trou = now - precedent
+    if trou <= INTERRUPTION_SEUIL:
+        return None
+    try:
+        derniere = datetime.fromisoformat(meta["derniere_alerte_interruption"])
+        if now - derniere < INTERRUPTION_COOLDOWN:
+            return None
+    except (KeyError, TypeError, ValueError):
+        pass
+    fmt = "%d/%m %H:%M"
+    return (
+        "⚡ <b>Trading CT</b> — ⏸️ Bot interrompu, il a repris\n"
+        f"Aucune vérification entre {precedent.astimezone(timezone.utc).strftime(fmt)} et "
+        f"{now.astimezone(timezone.utc).strftime(fmt)} UTC (≈ {_fmt_duree(trou)}). "
+        "Un signal apparu et disparu pendant ce trou n'a pas pu être détecté.\n"
+        "Causes fréquentes : panne de GitHub Actions (« runner non acquis », voir githubstatus.com) "
+        "ou déclencheur externe toutes les 5 min arrêté. Le message de 6 h 17 UTC en précisera la cause."
+    )
+
+
 def main():
+    debut_cycle = datetime.now(timezone.utc)
     state = load_state()
     # Audit du 03/09/2026 : une seule Session() reutilisee pour tout le run
     # (au lieu d'un requests.get/post independant par appel) garde la
@@ -566,6 +614,15 @@ def main():
         except Exception as e:
             print(f"[telegram] echec du message de retour au vert: {e}", file=sys.stderr)
         meta["alerte_panne_crypto_envoyee"] = False
+
+    msg_interruption = interruption_message(meta, debut_cycle)
+    if msg_interruption:
+        try:
+            send_telegram(session, msg_interruption)
+            meta["derniere_alerte_interruption"] = debut_cycle.isoformat()
+        except Exception as e:
+            print(f"[telegram] echec de l'alerte d'interruption: {e}", file=sys.stderr)
+    meta["last_run_at"] = debut_cycle.isoformat()
 
     save_state(state)
 
