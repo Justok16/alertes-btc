@@ -19,7 +19,11 @@ EU_WATCHLIST = [
     {"symbol": "NUKL.XETRA", "display": "VanEck Uranium & Nuclear Technologies UCITS ETF"},
     {"symbol": "SEC0.XETRA", "display": "iShares MSCI Global Semiconductors UCITS ETF"},
     {"symbol": "HNSC.LSE", "display": "HSBC Nasdaq Global Semiconductor UCITS ETF"},
-    {"symbol": "159995.SHE", "display": "ChinaAMC CSI Semiconductor Chip ETF"},
+    # Remplace 159995.SHE (ChinaAMC CSI Semiconductor Chip, A-share de Shenzhen
+    # inaccessible depuis un courtier europeen) le 15/10/2026 : l'ETF UCITS le
+    # plus proche achetable chez N26/Trade Republic. Chine large (grandes tech
+    # incluses), pas un fonds de puces pur -- un tel ETF UCITS n'existe pas.
+    {"symbol": "XCS6.XETRA", "display": "Xtrackers MSCI China UCITS ETF 1C (XCS6)"},
     {"symbol": "512480.SHG", "display": "CPIC CSI Fully Semiconductor ETF"},
     # Ajoutes le 03/10/2026 depuis la liste Trade Republic de l'utilisateur ;
     # codes valides avec eodhd_probe.py (cours en EUR, coherents avec l'app).
