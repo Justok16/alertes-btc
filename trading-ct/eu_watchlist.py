@@ -2,7 +2,7 @@
 Actifs non couverts par Alpaca (Europe, Chine continentale...) suivis via
 EODHD (necessite EODHD_API_TOKEN). Verifies une fois par jour seulement --
 le tier gratuit EODHD est limite a 20 appels API/jour, donc ce fichier est
-volontairement tenu court (13 symboles = 13 appels/jour).
+volontairement tenu court (12 symboles = 12 appels/jour).
 
 Format des symboles : <TICKER>.<EXCHANGE_CODE> tel qu'attendu par l'API
 EODHD, verifie via /api/search/<query> avant tout ajout -- le code de
@@ -24,7 +24,8 @@ EU_WATCHLIST = [
     # plus proche achetable chez N26/Trade Republic. Chine large (grandes tech
     # incluses), pas un fonds de puces pur -- un tel ETF UCITS n'existe pas.
     {"symbol": "XCS6.XETRA", "display": "Xtrackers MSCI China UCITS ETF 1C (XCS6)"},
-    {"symbol": "512480.SHG", "display": "CPIC CSI Fully Semiconductor ETF"},
+    # 512480.SHG (CPIC CSI Fully Semiconductor, A-share de Shanghai) retire le
+    # 15/10/2026 : inaccessible depuis un courtier europeen, comme 159995.SHE.
     # Ajoutes le 03/10/2026 depuis la liste Trade Republic de l'utilisateur ;
     # codes valides avec eodhd_probe.py (cours en EUR, coherents avec l'app).
     # .F = Bourse de Francfort : BY6/4BY/LGI n'existent pas sous .XETRA chez
