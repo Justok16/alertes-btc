@@ -21,6 +21,7 @@ Usage : python telegram_demo.py
 """
 
 import json
+import os
 import sys
 import tempfile
 import time
@@ -158,7 +159,9 @@ def main():
 
             watchlist_patch = (patch.object(module, "WATCHLIST", [BTC]) if module is trading_alert
                                else patch.object(module, "EU_WATCHLIST", [ETF]))
-            with watchlist_patch, \
+            # FORCER_CYCLE : les scenarios EU s'enchainent sur le meme fichier
+            # d'etat, le garde-fou "un cycle par cloture Xetra" les sauterait.
+            with watchlist_patch, patch.dict(os.environ, {"FORCER_CYCLE": "1"}), \
                     patch.object(module, "STATE_FILE", state_files[module]), \
                     patch.object(module, "SUPABASE_URL", ""), \
                     patch.object(module, "SUPABASE_SERVICE_ROLE_KEY", ""), \

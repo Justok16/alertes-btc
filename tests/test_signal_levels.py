@@ -2,6 +2,7 @@
 integration dans les boucles principales des deux bots (aucun reseau)."""
 
 import json
+import os
 import sys
 import tempfile
 import unittest
@@ -189,7 +190,10 @@ class TestIntegrationBotEurope(_BaseIntegration):
     symbol = "VVSM.XETRA"
 
     def _extra_patches(self):
-        return [patch.object(trading_alert_eu, "EU_WATCHLIST", [{"symbol": "VVSM.XETRA", "display": "VanEck"}])]
+        # FORCER_CYCLE : ces tests enchainent plusieurs cycles sur le meme etat,
+        # que le garde-fou "un cycle par cloture Xetra" sauterait sinon.
+        return [patch.object(trading_alert_eu, "EU_WATCHLIST", [{"symbol": "VVSM.XETRA", "display": "VanEck"}]),
+                patch.dict(os.environ, {"FORCER_CYCLE": "1"})]
 
     def test_modere_puis_fort(self):
         self.scenario_modere_puis_fort()

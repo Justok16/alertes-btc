@@ -24,10 +24,10 @@ l'état combiné vient de changer par rapport à la veille.
 ## `trading-ct/` — alertes court/moyen terme multi-actifs
 
 Bot séparé, dans le même esprit, qui surveille une watchlist de crypto,
-actions et ETF US (`watchlist.py` : BTC, ETH, SPY, QQQ, plusieurs ETF
-semi-conducteurs) toutes les 5 minutes pendant les horaires de marché, plus
-une watchlist d'ETF européens (`eu_watchlist.py`, Xetra/LSE) et A-shares
-chinoises, vérifiée une fois par jour.
+actions et ETF US (`watchlist.py` : BTC, ETH, SPY, QQQ, ETF semi-conducteurs,
+actions IA) toutes les 5 minutes pendant les horaires de marché, plus une
+watchlist d'ETF européens (`eu_watchlist.py`, Xetra/LSE/Francfort, tous
+achetables depuis un courtier européen), vérifiée une fois par clôture Xetra.
 
 Pour chaque actif, 3 indicateurs indépendants (RSI(14), histogramme MACD
 normalisé(14), Fear & Greed(14)) doivent être **unanimement** d'accord
