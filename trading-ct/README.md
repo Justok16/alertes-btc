@@ -87,12 +87,14 @@ recommandation. Modifie-la librement : chaque entree a un `symbol`
 - **Actions / ETF US** : Alpaca Markets Data API (flux IEX, retard ~15 min sur
   le plan gratuit). Ne verifie ces actifs que pendant les horaires du marche
   US (09:30-16:00 America/New_York, lun-ven).
-- **ETF europeens et A-shares chinoises** : EODHD (`eu_watchlist.py` /
+- **ETF europeens** (Xetra, LSE, Francfort) : EODHD (`eu_watchlist.py` /
   `trading_alert_eu.py`, workflow separe `trading-ct-eu-alert.yml`). Alpaca
   ne couvre pas ces marches, d'ou une source distincte. Le tier
   gratuit EODHD est limite a **20 appels API/jour** : ce bot ne verifie ces
-  actifs qu'**une fois par jour** (18h00 UTC, apres cloture Xetra), pas toutes
-  les 5 min comme le reste -- et meme sans cette limite de quota, verifier
+  actifs qu'**une fois par cloture Xetra** (17h30 a Francfort, jours ouvres ;
+  un second declenchement le meme jour ou le week-end s'arrete avant tout
+  appel EODHD, `FORCER_CYCLE=1` / case "forcer" du workflow pour passer
+  outre), pas toutes les 5 min comme le reste -- et meme sans cette limite de quota, verifier
   plus souvent ne servirait a rien : ce sont des cours de cloture (EOD), qui
   ne changent qu'une fois par jour.
 

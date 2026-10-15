@@ -16,6 +16,7 @@ Aucune execution d'ordre n'est faite par ce script.
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 sys.path.insert(0, str(Path(__file__).parent))
 import exit_rules  # noqa: E402
@@ -57,6 +58,44 @@ WINDOW = 100
 # panne systemique (tous partagent la meme source EODHD), pas un aleas
 # isole. Cron quotidien jours ouvres : 3 echecs consecutifs avant d'alerter.
 SEUIL_ECHECS_CONSECUTIFS = 3
+
+# Audit du 15/10/2026 : ce bot etait lance DEUX fois par jour (declencheur
+# externe a 16h05 UTC + cron GitHub de 18h, qui part avec 3 a 6 h de retard),
+# week-end compris -- soit 26 appels EODHD/jour pour un quota gratuit de 20,
+# et un second passage qui n'apportait rien (meme cloture). Un cycle n'est
+# donc execute qu'UNE fois par cloture Xetra (17h30 a Francfort, lun-ven) :
+# si un cycle a deja tourne depuis la derniere cloture, on s'arrete avant le
+# moindre appel EODHD. Le cron GitHub reste un filet de securite si le
+# declencheur externe s'arrete. FORCER_CYCLE=1 (workflow_dispatch) passe outre.
+# Limite assumee : les valeurs de la Bourse de Francfort (.F) clotuvent a 20h,
+# un passage entre 17h30 et 20h les evalue sur la veille (un jour de retard).
+XETRA_TZ = ZoneInfo("Europe/Berlin")
+XETRA_CLOTURE = (17, 30)
+
+
+def derniere_cloture_xetra(now):
+    """Derniere cloture Xetra (jour ouvre, 17h30 Europe/Berlin) avant `now`."""
+    local = now.astimezone(XETRA_TZ)
+    cloture = local.replace(hour=XETRA_CLOTURE[0], minute=XETRA_CLOTURE[1], second=0, microsecond=0)
+    if local < cloture:
+        cloture -= timedelta(days=1)
+    while cloture.weekday() >= 5:
+        cloture -= timedelta(days=1)
+    return cloture
+
+
+def cycle_deja_fait(meta, now):
+    """True si un cycle a deja tourne depuis la derniere cloture Xetra (et que
+    FORCER_CYCLE n'est pas defini). Horodatage absent ou illisible : False."""
+    if os.environ.get("FORCER_CYCLE", "").strip() not in ("", "0", "false"):
+        return False
+    try:
+        dernier = datetime.fromisoformat(meta["last_run_at"])
+    except (KeyError, TypeError, ValueError):
+        return False
+    if dernier.tzinfo is None:
+        return False
+    return dernier >= derniere_cloture_xetra(now)
 
 
 def fetch_eodhd_closes(session, symbol, history_days=200):
@@ -180,6 +219,12 @@ def evaluate_symbol(session, item):
 
 def main():
     state = load_state()
+    debut_cycle = datetime.now(timezone.utc)
+    if cycle_deja_fait(state.get("_meta") or {}, debut_cycle):
+        print(f"Cycle ignore : deja execute depuis la derniere cloture Xetra "
+              f"({derniere_cloture_xetra(debut_cycle):%d/%m %H:%M} Europe/Berlin). "
+              "Aucun appel EODHD. FORCER_CYCLE=1 pour passer outre.")
+        return
     session = requests.Session()
     alerte_echouee = False
     echecs = 0
@@ -272,6 +317,11 @@ def main():
         except Exception as e:
             print(f"[telegram] echec du message de retour au vert: {e}", file=sys.stderr)
         meta["alerte_panne_envoyee"] = False
+
+    # Horodatage du cycle, uniquement si au moins un ETF a ete evalue : un
+    # cycle entierement en echec (EODHD en panne) doit pouvoir etre retente.
+    if echecs < len(EU_WATCHLIST):
+        meta["last_run_at"] = debut_cycle.isoformat()
 
     save_state(state)
 

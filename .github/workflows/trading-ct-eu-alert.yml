@@ -5,7 +5,12 @@ on:
     # Une fois par jour (18h00 UTC, apres cloture Xetra ~15h30 UTC) --
     # tier gratuit EODHD limite a 20 appels/jour, 1 appel par ETF/jour (cf. EU_WATCHLIST ; un test garde le plafond).
     - cron: "0 18 * * 1-5"
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      forcer:
+        description: "Forcer le cycle meme si un passage a deja eu lieu depuis la derniere cloture Xetra"
+        type: boolean
+        default: false
 
 concurrency:
   group: trading-ct-eu-alert
@@ -39,6 +44,9 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           EODHD_API_TOKEN: ${{ secrets.EODHD_API_TOKEN }}
+          # Un seul cycle par cloture Xetra (cf. cycle_deja_fait dans le script) ;
+          # `forcer` (Run workflow) passe outre pour un test manuel.
+          FORCER_CYCLE: ${{ github.event.inputs.forcer == 'true' && '1' || '' }}
           # Ajoutes le 04/09/2026 (migration memoire_supabase.py) : SI ces
           # 2 secrets sont configures (Settings > Secrets and variables >
           # Actions), l'etat passe par Supabase au lieu d'etre commite en
