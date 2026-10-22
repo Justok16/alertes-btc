@@ -4,7 +4,7 @@ sur des series simples ; aucun reseau (sessions et API mockees)."""
 
 import sys
 import unittest
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 from zoneinfo import ZoneInfo
@@ -122,6 +122,25 @@ class TestRecuperationDesCours(unittest.TestCase):
         self.assertAlmostEqual((datetime.now(timezone.utc) - debut).days, ta.ALPACA_HISTORY_DAYS, delta=1)
         self.assertGreaterEqual(ta.ALPACA_HISTORY_DAYS, 5)   # >= 5 jours ouvres x ~26 bougies de 15 min > 47 (MACD)
         self.assertEqual(get.call_args.kwargs["headers"]["APCA-API-KEY-ID"], "k")
+
+    def test_alpaca_flux_iex_ou_sip_retarde(self):
+        # Plan gratuit : le flux consolide `sip` n'est servi que pour des donnees
+        # vieilles de plus de 15 min -> `end` borne ; en IEX, pas de borne `end`.
+        with patch.object(ta, "ALPACA_API_KEY_ID", "k"), patch.object(ta, "ALPACA_API_SECRET_KEY", "s"), \
+                patch.object(ta, "get_with_retry", return_value=_reponse({"bars": [{"c": 1}]})) as get:
+            for feed_defaut, feed_arg, attendu in [("iex", None, "iex"), ("sip", None, "sip"), ("iex", "sip", "sip")]:
+                with patch.object(ta, "ALPACA_FEED", feed_defaut):
+                    ta.fetch_alpaca_closes(MagicMock(), "SPY", feed=feed_arg)
+                params = get.call_args.kwargs["params"]
+                self.assertEqual(params["feed"], attendu)
+                if attendu == "sip":
+                    fin = datetime.strptime(params["end"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+                    retard = datetime.now(timezone.utc) - fin
+                    self.assertGreater(retard, timedelta(minutes=15))
+                    self.assertLess(retard, timedelta(minutes=30))
+                else:
+                    self.assertNotIn("end", params)
+        self.assertIn(ta.ALPACA_FEED, ("iex", "sip"))
 
     def test_alpaca_sans_bougie_ou_en_erreur(self):
         with patch.object(ta, "ALPACA_API_KEY_ID", "k"), patch.object(ta, "ALPACA_API_SECRET_KEY", "s"):
