@@ -4,7 +4,7 @@ sur des series simples ; aucun reseau (sessions et API mockees)."""
 
 import sys
 import unittest
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 from zoneinfo import ZoneInfo
@@ -107,11 +107,20 @@ class TestRecuperationDesCours(unittest.TestCase):
             self.assertIsNone(ta.fetch_alpaca_closes(MagicMock(), "SPY"))
         get.assert_not_called()
 
-    def test_alpaca_cours_ajustes_des_splits(self):
+    def test_alpaca_cours_ajustes_des_splits_et_dernieres_bougies(self):
+        # Alpaca renvoie les bougies en ordre DECROISSANT (sort=desc) : la plus recente d'abord
         with patch.object(ta, "ALPACA_API_KEY_ID", "k"), patch.object(ta, "ALPACA_API_SECRET_KEY", "s"), \
-                patch.object(ta, "get_with_retry", return_value=_reponse({"bars": [{"c": 10}, {"c": 11.5}]})) as get:
-            self.assertEqual(ta.fetch_alpaca_closes(MagicMock(), "SPY"), [10.0, 11.5])
-        self.assertEqual(get.call_args.kwargs["params"]["adjustment"], "split")
+                patch.object(ta, "get_with_retry", return_value=_reponse({"bars": [{"c": 11.5}, {"c": 10}]})) as get:
+            self.assertEqual(ta.fetch_alpaca_closes(MagicMock(), "SPY"), [10.0, 11.5])   # remis en chronologique
+        params = get.call_args.kwargs["params"]
+        self.assertEqual(params["adjustment"], "split")
+        self.assertEqual(params["sort"], "desc")
+        self.assertEqual(params["limit"], 100)
+        # Sans `start`, Alpaca ne renvoie que les bougies du jour (jamais assez pour le MACD)
+        self.assertRegex(params["start"], r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
+        debut = datetime.strptime(params["start"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+        self.assertAlmostEqual((datetime.now(timezone.utc) - debut).days, ta.ALPACA_HISTORY_DAYS, delta=1)
+        self.assertGreaterEqual(ta.ALPACA_HISTORY_DAYS, 5)   # >= 5 jours ouvres x ~26 bougies de 15 min > 47 (MACD)
         self.assertEqual(get.call_args.kwargs["headers"]["APCA-API-KEY-ID"], "k")
 
     def test_alpaca_sans_bougie_ou_en_erreur(self):
