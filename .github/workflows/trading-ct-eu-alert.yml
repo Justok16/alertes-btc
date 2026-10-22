@@ -2,8 +2,15 @@ name: Trading CT EU ETF Alert
 
 on:
   schedule:
-    # Une fois par jour (18h00 UTC, apres cloture Xetra ~15h30 UTC) --
-    # tier gratuit EODHD limite a 20 appels/jour, 1 appel par ETF/jour (cf. EU_WATCHLIST ; un test garde le plafond).
+    # Filets de securite derriere le declencheur externe (cron-job.org, 16h05 UTC)
+    # -- le script n'execute qu'UN cycle par cloture Xetra (17h30 Europe/Berlin,
+    # cf. cycle_deja_fait) : un passage de trop s'arrete sans aucun appel EODHD.
+    # 16h40 UTC couvre l'heure d'hiver (cloture a 16h30 UTC, le declencheur de
+    # 16h05 tombe alors AVANT la cloture et est ignore a juste titre) ; 18h00 UTC
+    # reste en secours. Le cron GitHub part souvent avec 2 a 6 h de retard.
+    # Tier gratuit EODHD : 20 appels/jour, 1 appel par ETF et par cycle
+    # (cf. EU_WATCHLIST ; un test garde le plafond).
+    - cron: "40 16 * * 1-5"
     - cron: "0 18 * * 1-5"
   workflow_dispatch:
     inputs:
