@@ -84,6 +84,17 @@ HEALTHCHECK_TIMEOUT = 5
 
 BINANCE_KLINES_URL = "https://data-api.binance.vision/api/v3/klines"
 ALPACA_BARS_URL = "https://data.alpaca.markets/v2/stocks/{symbol}/bars"
+# Audit du 22/10/2026 : sans parametre `start`, Alpaca ne renvoie que les
+# bougies DU JOUR ("Default: the beginning of the current day"), soit au plus
+# ~26 bougies de 15 min -- jamais les 47 necessaires au score MACD, qui restait
+# None toute la journee (et le RSI aussi la premiere demi-heure). Les 3
+# indicateurs ne pouvaient donc JAMAIS etre unanimes : aucune alerte sur les
+# actions/ETF US n'a pu partir depuis la creation du bot (seule la crypto, via
+# Binance qui renvoie les `limit` dernieres bougies, fonctionnait). On demande
+# desormais les `limit` dernieres bougies sur ALPACA_HISTORY_DAYS jours
+# calendaires (sort=desc puis remise dans l'ordre chronologique), ce qui donne
+# en plus aux titres peu echanges sur IEX (KTEC, XSD, SMHC) assez de bougies.
+ALPACA_HISTORY_DAYS = 10
 ALTERNATIVE_FNG_URL = "https://api.alternative.me/fng/?limit=1"
 
 HTTP_TIMEOUT = 15
@@ -287,11 +298,16 @@ def fetch_alpaca_closes(session, symbol, timeframe="15Min", limit=100):
             ALPACA_BARS_URL.format(symbol=symbol),
             # adjustment=split : evite qu'un split boursier apparaisse comme
             # un faux krach du prix dans les 100 dernieres bougies
-            params={"timeframe": timeframe, "limit": limit, "feed": "iex", "adjustment": "split"},
+            params={
+                "timeframe": timeframe, "limit": limit, "feed": "iex", "adjustment": "split",
+                # cf. ALPACA_HISTORY_DAYS : les `limit` DERNIERES bougies, pas celles du jour
+                "start": (datetime.now(timezone.utc) - timedelta(days=ALPACA_HISTORY_DAYS)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "sort": "desc",
+            },
             headers={"APCA-API-KEY-ID": ALPACA_API_KEY_ID, "APCA-API-SECRET-KEY": ALPACA_API_SECRET_KEY},
         )
         bars = r.json().get("bars", [])
-        closes = [float(b["c"]) for b in bars]
+        closes = [float(b["c"]) for b in reversed(bars)]   # sort=desc -> ordre chronologique
         return closes or None
     except Exception as e:
         print(f"[alpaca] echec pour {symbol}: {e}", file=sys.stderr)
