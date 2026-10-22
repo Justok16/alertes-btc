@@ -84,9 +84,12 @@ recommandation. Modifie-la librement : chaque entree a un `symbol`
 
 - **Crypto** : `data-api.binance.vision` (miroir public Binance, sans cle,
   sans blocage geographique).
-- **Actions / ETF US** : Alpaca Markets Data API (flux IEX, retard ~15 min sur
-  le plan gratuit). Ne verifie ces actifs que pendant les horaires du marche
-  US (09:30-16:00 America/New_York, lun-ven).
+- **Actions / ETF US** : Alpaca Markets Data API, flux consolide SIP (toutes
+  les bourses US) retarde de 15 min, la seule forme du SIP servie par le plan
+  gratuit (`ALPACA_FEED=iex` pour le flux IEX temps reel, deconseille : les
+  titres peu echanges sur IEX comme SMHC ou KTEC n'y ont presque pas de
+  bougies et des indicateurs faux). Ne verifie ces actifs que pendant les
+  horaires du marche US (09:30-16:00 America/New_York, lun-ven).
 - **ETF europeens** (Xetra, LSE, Francfort) : EODHD (`eu_watchlist.py` /
   `trading_alert_eu.py`, workflow separe `trading-ct-eu-alert.yml`). Alpaca
   ne couvre pas ces marches, d'ou une source distincte. Le tier
@@ -205,7 +208,10 @@ sur Telegram, fonctionne marche ferme : c'est le moyen de verifier le
 correctif du 22/10/2026 (historique de 10 jours, cf. `ALPACA_HISTORY_DAYS`)
 sans attendre la prochaine seance. Avant ce correctif, Alpaca ne renvoyait
 que les bougies du jour et le MACD restait vide, donc aucune alerte
-action/ETF ne pouvait partir.
+action/ETF ne pouvait partir. Option `--feed iex|sip` (en tete du champ
+*symbols*) pour comparer les deux flux ; c'est cette sonde qui a montre le
+22/10/2026 que le flux IEX laissait SMHC et KTEC sans MACD et faussait les
+indicateurs des titres peu echanges, d'ou le passage du bot au flux SIP.
 
 ## Limites connues
 

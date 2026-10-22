@@ -99,8 +99,13 @@ ALPACA_HISTORY_DAYS = 10
 # donc jamais de MACD ni d'alerte. Le flux consolide `sip` (toutes les bourses
 # US) est accepte par le plan gratuit a condition de ne demander que des
 # donnees vieilles de plus de 15 min (sinon 403) : on borne alors `end`.
-# ALPACA_FEED : "iex" (temps reel, IEX seul) ou "sip" (complet, retard 15 min).
-ALPACA_FEED = os.environ.get("ALPACA_FEED", "iex").strip() or "iex"
+# Sonde en conditions reelles le 22/10/2026 : en `sip`, 18/18 symboles ont
+# leurs 3 indicateurs (SMHC : 93 bougies). IEX etait en plus TROMPEUR pour les
+# titres peu echanges (XSD : RSI 17.7 en IEX contre 40.9 en SIP au meme
+# instant, KTEC : 11.1 contre 54.2) -- des alertes auraient pu partir sur des
+# bougies composees de quelques echanges IEX. Defaut : "sip" (complet, retard
+# 15 min, soit une bougie) ; ALPACA_FEED=iex pour revenir au temps reel IEX.
+ALPACA_FEED = os.environ.get("ALPACA_FEED", "sip").strip() or "sip"
 ALPACA_SIP_DELAY = timedelta(minutes=16)
 ALTERNATIVE_FNG_URL = "https://api.alternative.me/fng/?limit=1"
 
