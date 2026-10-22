@@ -74,7 +74,7 @@ chacun aussi déclenchable manuellement (**Actions > ... > Run workflow**) :
 |---|---|---|
 | `btc-alert.yml` | tous les jours à 08h00 UTC | `btc_alert.py` |
 | `trading-ct-alert.yml` | toutes les 5 minutes | `trading-ct/trading_alert.py` |
-| `trading-ct-eu-alert.yml` | tous les jours ouvrés à 18h00 UTC | `trading-ct/trading_alert_eu.py` |
+| `trading-ct-eu-alert.yml` | un cycle par clôture Xetra, jours ouvrés (déclencheur externe 16h05 UTC + crons GitHub 16h40/18h00 UTC en secours ; un passage de trop s'arrête sans appel EODHD) | `trading-ct/trading_alert_eu.py` |
 
 ## Secrets nécessaires
 
