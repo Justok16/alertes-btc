@@ -194,6 +194,19 @@ L'etat reel (fichiers / Supabase) n'est jamais lu ni modifie, aucune donnee
 de marche n'est appelee, prix et scores sont fictifs. Le test lui-meme est
 couvert par `tests/test_telegram_demo.py` (il doit echouer si une alerte casse).
 
+## Sonde Alpaca (`alpaca_probe.py`)
+
+Workflow **Trading CT Backtest (actions/ETF)** -> script `alpaca_probe.py`
+(champ *symbols* vide = toute la watchlist US). Pour chaque action/ETF, affiche
+le nombre de bougies 15 min recues d'Alpaca, le dernier cours et les 3
+indicateurs (RSI, MACD score, score maison) ; le job devient rouge si un
+symbole n'a pas ses 3 indicateurs. Ne lit ni n'ecrit l'etat, n'envoie rien
+sur Telegram, fonctionne marche ferme : c'est le moyen de verifier le
+correctif du 22/10/2026 (historique de 10 jours, cf. `ALPACA_HISTORY_DAYS`)
+sans attendre la prochaine seance. Avant ce correctif, Alpaca ne renvoyait
+que les bougies du jour et le MACD restait vide, donc aucune alerte
+action/ETF ne pouvait partir.
+
 ## Limites connues
 
 - Ce n'est **pas** du scalping minute par minute : meme a 5 min, le cron
