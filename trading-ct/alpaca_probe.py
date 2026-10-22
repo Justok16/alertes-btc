@@ -5,8 +5,9 @@ maison), SANS toucher a l'etat ni envoyer de Telegram. Utile hors seance :
 le bot ignore volontairement les actions quand le marche US est ferme, donc
 un lancement manuel de trading_alert.py le soir ne prouve rien.
 
-Usage : python alpaca_probe.py [SPY QQQ ...]   (sans argument : toute la
-watchlist US). Necessite ALPACA_API_KEY_ID / ALPACA_API_SECRET_KEY.
+Usage : python alpaca_probe.py [--feed iex|sip] [SPY QQQ ...]   (sans
+symbole : toute la watchlist US ; sans --feed : ALPACA_FEED du bot).
+Necessite ALPACA_API_KEY_ID / ALPACA_API_SECRET_KEY.
 
 Ajoute le 22/10/2026 avec le correctif ALPACA_HISTORY_DAYS : avant, Alpaca
 ne renvoyait que les bougies du jour courant (parametre `start` par defaut),
@@ -21,7 +22,8 @@ import requests
 
 sys.path.insert(0, str(Path(__file__).parent))
 from trading_alert import (  # noqa: E402
-    ALPACA_API_KEY_ID, ALPACA_API_SECRET_KEY, compute_rsi, fetch_alpaca_closes, home_score, macd_score,
+    ALPACA_API_KEY_ID, ALPACA_API_SECRET_KEY, ALPACA_FEED, compute_rsi, fetch_alpaca_closes, home_score,
+    macd_score,
 )
 from watchlist import WATCHLIST  # noqa: E402
 
@@ -29,9 +31,9 @@ sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 
-def sonder(session, symbol):
+def sonder(session, symbol, feed=None):
     """Retourne (bougies, dernier cours, rsi, macd, maison) ; bougies=0 si rien recu."""
-    closes = fetch_alpaca_closes(session, symbol) or []
+    closes = fetch_alpaca_closes(session, symbol, feed=feed) or []
     if not closes:
         return 0, None, None, None, None
     return len(closes), closes[-1], compute_rsi(closes, 14), macd_score(closes, 14), home_score(closes)
@@ -39,6 +41,14 @@ def sonder(session, symbol):
 
 def main(argv=None, session=None):
     symbols = list(argv if argv is not None else sys.argv[1:])
+    feed = None
+    if "--feed" in symbols:
+        i = symbols.index("--feed")
+        if i + 1 >= len(symbols) or symbols[i + 1] not in ("iex", "sip"):
+            print("Usage : --feed iex|sip", file=sys.stderr)
+            return 2
+        feed = symbols[i + 1]
+        del symbols[i:i + 2]
     if not symbols:
         symbols = [item["symbol"] for item in WATCHLIST if item["asset_class"] != "crypto"]
     if not ALPACA_API_KEY_ID or not ALPACA_API_SECRET_KEY:
@@ -47,10 +57,11 @@ def main(argv=None, session=None):
 
     session = session or requests.Session()
     echecs = 0
+    print(f"Flux Alpaca : {feed or ALPACA_FEED}")
     print(f"{'Symbole':<8} {'Statut':<7} {'Bougies':>7} {'Dernier cours':>14} {'RSI':>6} {'MACD':>6} {'Maison':>7}")
     print("-" * 62)
     for symbol in symbols:
-        n, last, rsi, macd, maison = sonder(session, symbol)
+        n, last, rsi, macd, maison = sonder(session, symbol, feed)
         complet = n > 0 and None not in (rsi, macd, maison)
         statut = "OK" if complet else "KO"
         if not complet:

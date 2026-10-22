@@ -28,7 +28,7 @@ class TestSonde(unittest.TestCase):
         out = io.StringIO()
         with patch.multiple(alpaca_probe, **CLES), \
              patch.object(alpaca_probe, "fetch_alpaca_closes",
-                          side_effect=lambda s, sym: closes_par_symbole.get(sym)) as fetch, \
+                          side_effect=lambda s, sym, feed=None: closes_par_symbole.get(sym)) as fetch, \
              redirect_stdout(out):
             code = alpaca_probe.main(argv, session=MagicMock())
         return code, out.getvalue(), fetch
@@ -68,6 +68,20 @@ class TestSonde(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertEqual([c.args[1] for c in fetch.call_args_list], us)
         self.assertNotIn("BTCUSDT", [c.args[1] for c in fetch.call_args_list])
+
+    def test_option_feed_transmise_au_bot(self):
+        code, out, fetch = self._run({"SPY": _closes(100)}, ["--feed", "sip", "SPY"])
+        self.assertEqual(code, 0)
+        self.assertEqual(fetch.call_args.kwargs["feed"], "sip")
+        self.assertEqual(fetch.call_args.args[1], "SPY")
+        self.assertIn("Flux Alpaca : sip", out)
+        # Sans --feed : feed=None, le bot applique ALPACA_FEED
+        _, _, fetch = self._run({"SPY": _closes(100)}, ["SPY"])
+        self.assertIsNone(fetch.call_args.kwargs["feed"])
+        # Valeur invalide : usage, sans appel reseau
+        code, _, fetch = self._run({}, ["--feed", "sipp", "SPY"])
+        self.assertEqual(code, 2)
+        fetch.assert_not_called()
 
     def test_utilise_la_vraie_fonction_du_bot(self):
         # La sonde doit tester fetch_alpaca_closes de trading_alert, pas une copie.

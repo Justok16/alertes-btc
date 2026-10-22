@@ -92,9 +92,16 @@ ALPACA_BARS_URL = "https://data.alpaca.markets/v2/stocks/{symbol}/bars"
 # actions/ETF US n'a pu partir depuis la creation du bot (seule la crypto, via
 # Binance qui renvoie les `limit` dernieres bougies, fonctionnait). On demande
 # desormais les `limit` dernieres bougies sur ALPACA_HISTORY_DAYS jours
-# calendaires (sort=desc puis remise dans l'ordre chronologique), ce qui donne
-# en plus aux titres peu echanges sur IEX (KTEC, XSD, SMHC) assez de bougies.
+# calendaires (sort=desc puis remise dans l'ordre chronologique).
 ALPACA_HISTORY_DAYS = 10
+# Sonde du 22/10/2026 (alpaca_probe.py) : sur le flux IEX gratuit, les titres
+# peu echanges n'ont presque pas de bougies (SMHC : 3 en 10 jours, KTEC : 24),
+# donc jamais de MACD ni d'alerte. Le flux consolide `sip` (toutes les bourses
+# US) est accepte par le plan gratuit a condition de ne demander que des
+# donnees vieilles de plus de 15 min (sinon 403) : on borne alors `end`.
+# ALPACA_FEED : "iex" (temps reel, IEX seul) ou "sip" (complet, retard 15 min).
+ALPACA_FEED = os.environ.get("ALPACA_FEED", "iex").strip() or "iex"
+ALPACA_SIP_DELAY = timedelta(minutes=16)
 ALTERNATIVE_FNG_URL = "https://api.alternative.me/fng/?limit=1"
 
 HTTP_TIMEOUT = 15
@@ -288,22 +295,28 @@ def fetch_binance_closes(session, symbol, interval="15m", limit=100):
         return None
 
 
-def fetch_alpaca_closes(session, symbol, timeframe="15Min", limit=100):
+def fetch_alpaca_closes(session, symbol, timeframe="15Min", limit=100, feed=None):
     if not ALPACA_API_KEY_ID or not ALPACA_API_SECRET_KEY:
         print(f"[alpaca] cles API manquantes, {symbol} ignore", file=sys.stderr)
         return None
+    feed = feed or ALPACA_FEED
+    now = datetime.now(timezone.utc)
+    # adjustment=split : evite qu'un split boursier apparaisse comme
+    # un faux krach du prix dans les 100 dernieres bougies
+    params = {
+        "timeframe": timeframe, "limit": limit, "feed": feed, "adjustment": "split",
+        # cf. ALPACA_HISTORY_DAYS : les `limit` DERNIERES bougies, pas celles du jour
+        "start": (now - timedelta(days=ALPACA_HISTORY_DAYS)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "sort": "desc",
+    }
+    if feed == "sip":
+        # cf. ALPACA_SIP_DELAY : le plan gratuit refuse (403) le SIP des 15 dernieres minutes
+        params["end"] = (now - ALPACA_SIP_DELAY).strftime("%Y-%m-%dT%H:%M:%SZ")
     try:
         r = get_with_retry(
             session,
             ALPACA_BARS_URL.format(symbol=symbol),
-            # adjustment=split : evite qu'un split boursier apparaisse comme
-            # un faux krach du prix dans les 100 dernieres bougies
-            params={
-                "timeframe": timeframe, "limit": limit, "feed": "iex", "adjustment": "split",
-                # cf. ALPACA_HISTORY_DAYS : les `limit` DERNIERES bougies, pas celles du jour
-                "start": (datetime.now(timezone.utc) - timedelta(days=ALPACA_HISTORY_DAYS)).strftime("%Y-%m-%dT%H:%M:%SZ"),
-                "sort": "desc",
-            },
+            params=params,
             headers={"APCA-API-KEY-ID": ALPACA_API_KEY_ID, "APCA-API-SECRET-KEY": ALPACA_API_SECRET_KEY},
         )
         bars = r.json().get("bars", [])
