@@ -24,7 +24,7 @@ from eu_watchlist import EU_WATCHLIST  # noqa: E402
 from trading_alert import (  # noqa: E402
     HOME_BUY, HOME_SELL, MACD_BUY, MACD_SELL, RSI_BUY, RSI_SELL,
     classify, combine_signal, compute_rsi, episode_level, get_with_retry, home_score,
-    is_upgrade, macd_score, send_telegram, signal_title,
+    est_detenu, est_long_terme, is_upgrade, macd_score, note_long_terme, send_telegram, signal_title,
 )
 
 import json
@@ -165,8 +165,8 @@ def save_state(state):
     os.replace(tmp, STATE_FILE)
 
 
-def build_message(result, upgrade=False):
-    titre, explication = signal_title(result, upgrade)
+def build_message(result, upgrade=False, long_terme=False, detenu=False):
+    titre, explication = signal_title(result, upgrade, long_terme, detenu)
     lines = [
         f"🇪🇺 <b>Trading CT — ETF Europe</b> — {titre}",
         f"{result['display']} ({result['symbol']}) — prix actuel : {result['price']}",
@@ -177,6 +177,8 @@ def build_message(result, upgrade=False):
     ]
     if explication:
         lines += ["", explication]
+    if long_terme:
+        lines += ["", note_long_terme(detenu)]
     lines += ["", "Signal technique automatisé, pas un conseil financier. Décision et exécution manuelles."]
     return "\n".join(lines)
 
@@ -243,10 +245,15 @@ def main():
         ) else None
         upgrade = is_upgrade(previous, previous_level, result)
         alert_sent = False
+        long_terme = est_long_terme(item)
+        if long_terme and new_alert == "sell":
+            print(f"{symbol}: signal de vente non envoye (strategie long terme)")
+            new_alert = None
 
         if new_alert or upgrade:
             try:
-                send_telegram(session, build_message(result, upgrade=upgrade))
+                send_telegram(session, build_message(result, upgrade=upgrade, long_terme=long_terme,
+                                                     detenu=est_detenu(item)))
                 alert_sent = True
                 detail = "renforcee" if upgrade else (result.get("level") or "")
                 print(f"Alerte envoyee pour {symbol}: {result['combined']} {detail}".rstrip())
@@ -264,9 +271,10 @@ def main():
 
         # Suivi de position par le prix (objectif / stop depuis l'alerte
         # d'achat), evalue sur le cours de cloture du jour -- cf. exit_rules.py.
+        # Strategie long terme : pas de suivi objectif / stop (cf. MODE_LONG_TERME).
         old_entry = state.get(symbol, {}).get("entry")
         target_pct, stop_pct = exit_rules.exit_rule_for(item)
-        entry, exit_event = exit_rules.step_position(
+        entry, exit_event = (None, None) if long_terme else exit_rules.step_position(
             old_entry, new_alert, alert_sent, result["price"],
             datetime.now(timezone.utc), target_pct, stop_pct,
         )

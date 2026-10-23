@@ -86,7 +86,10 @@ class TestBoucle(unittest.TestCase):
         self.state_file = Path(self.tmp.name) / "state.json"
         self.send = MagicMock()
         self.sources = {"alt": (50, "neutral"), "cg": (50, "neutral"), "cmc": (50, "neutral")}
-        for p in (patch.object(ba, "STATE_FILE", self.state_file),
+        # Ces tests couvrent les signaux d'achat ET de vente : mode court terme
+        # explicite (le mode long terme a ses propres tests, test_long_terme.py).
+        for p in (patch.object(ba, "LONG_TERME", False),
+                  patch.object(ba, "STATE_FILE", self.state_file),
                   patch.object(ba, "SUPABASE_URL", ""),
                   patch.object(ba, "SUPABASE_SERVICE_ROLE_KEY", ""),
                   patch.object(ba, "send_telegram", self.send),

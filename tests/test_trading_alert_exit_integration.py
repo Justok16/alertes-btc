@@ -33,6 +33,7 @@ class TestBoucleAvecSortie(unittest.TestCase):
             patch.object(trading_alert, "WATCHLIST", [ITEM]),
             patch.object(trading_alert, "fetch_crypto_fng", return_value=50),
             patch.object(trading_alert, "send_telegram", self.send),
+            patch.object(trading_alert, "MODE_LONG_TERME", False),   # suivi objectif / stop = court terme
         ]
         for p in patches:
             p.start()

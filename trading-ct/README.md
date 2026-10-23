@@ -1,4 +1,4 @@
-# Trading CT — alertes court/moyen terme (crypto + actions/ETF)
+# Trading CT — alertes long terme sur les baisses (crypto + actions/ETF)
 
 Bot d'alertes techniques multi-actifs, dans le meme esprit que le bot BTC
 momentum du dossier parent : verification periodique, alerte Telegram
@@ -10,7 +10,38 @@ tous les coups" a court terme, et ce bot n'execute aucun ordre : il se
 contente d'un signal technique, l'achat/vente reste 100% manuel, sur la
 plateforme de ton choix.
 
-## Principe
+## Strategie long terme (par defaut depuis le 23/10/2026)
+
+Le bot est regle pour un investisseur **long terme qui achete sur les
+baisses marquees**. Concretement :
+
+- **Bougies journalieres** pour tous les actifs (actions/ETF US et crypto
+  passent de 15 min a 1 jour ; l'Europe etait deja en journalier). Une alerte
+  ne part que si les 3 indicateurs journaliers sont a 20 ou moins en meme
+  temps : une vraie baisse de plusieurs jours, pas un creux de quelques heures.
+- **Les alertes d'achat changent de nom** :
+  - « 💶 RAPPEL DE VERSEMENT » pour une ligne que tu detiens deja
+    (`"detenu": True` dans `watchlist.py` / `eu_watchlist.py` : BTC, SEC0 et
+    VVSM depuis le 22/10/2026) -- un versement supplementaire, en plus du
+    plan programme, se fait la a meilleur prix ;
+  - « 💶 OPPORTUNITÉ LONG TERME » pour les autres actifs suivis.
+  Les niveaux restent BAISSE MARQUÉE (<= 20), BAISSE FORTE (<= 15) et
+  BAISSE RENFORCÉE (passage de marquee a forte).
+- **Plus aucun signal de vente, ni objectif / stop** (les sections « Regles
+  de sortie » ci-dessous ne s'appliquent qu'au mode court terme) : vendre sur
+  une variation de quelques pour cent va a l'encontre d'un placement de
+  plusieurs annees. Meme chose pour `btc_alert.py` (zone d'avidite extreme
+  silencieuse, zone de peur extreme = rappel de versement).
+- Quand tu achetes une nouvelle ligne, ajoute `"detenu": True` a son entree
+  dans la watchlist (ou demande-le) pour recevoir des rappels de versement.
+
+Retour a l'ancien comportement court terme (15 min, ventes, objectif / stop) :
+variable d'environnement `MODE_STRATEGIE=court_terme` dans les workflows.
+La demo `telegram_demo.py` rejoue toujours les scenarios court terme (elle
+verifie la mecanique d'envoi), le mode long terme est couvert par
+`tests/test_long_terme.py`.
+
+## Principe (mode court terme historique)
 
 Pour chaque actif de `watchlist.py`, calcul de 3 indicateurs independants
 (ramenes sur une echelle 0-100) toutes les ~5 minutes, sur des bougies
@@ -215,10 +246,10 @@ indicateurs des titres peu echanges, d'ou le passage du bot au flux SIP.
 
 ## Limites connues
 
-- Ce n'est **pas** du scalping minute par minute : meme a 5 min, le cron
-  GitHub Actions reste sujet a des retards occasionnels, et les indicateurs
-  restent calcules sur des bougies 15 min -- ca correspond plutot a du
-  swing court/moyen terme (positions de quelques heures a quelques jours).
+- En strategie long terme (defaut), les bougies sont journalieres : le
+  cycle de 5 min ne fait que detecter plus tot le passage du seuil pendant
+  la seance, sur la bougie du jour en cours. En mode court terme, les
+  bougies 15 min correspondent a du swing de quelques heures a quelques jours.
 - Les seuils stricts (15/85 fort, 20 modere a l'achat) rendent les alertes
   peu frequentes ; sur crypto, la vente est quasi impossible (Fear & Greed
   >= 85 : aucun jour sur l'annee ecoulee) -- d'ou les regles de sortie.

@@ -161,7 +161,10 @@ def main():
                                else patch.object(module, "EU_WATCHLIST", [ETF]))
             # FORCER_CYCLE : les scenarios EU s'enchainent sur le meme fichier
             # d'etat, le garde-fou "un cycle par cloture Xetra" les sauterait.
+            # MODE_LONG_TERME=False : la demo rejoue les 15 scenarios historiques
+            # (ventes, objectif, stop), qui n'existent qu'en mode court terme.
             with watchlist_patch, patch.dict(os.environ, {"FORCER_CYCLE": "1"}), \
+                    patch.object(trading_alert, "MODE_LONG_TERME", False), \
                     patch.object(module, "STATE_FILE", state_files[module]), \
                     patch.object(module, "SUPABASE_URL", ""), \
                     patch.object(module, "SUPABASE_SERVICE_ROLE_KEY", ""), \
