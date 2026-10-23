@@ -15,9 +15,12 @@ watchlist.py, via Alpaca) quand un equivalent existait.
 """
 
 EU_WATCHLIST = [
-    {"symbol": "VVSM.XETRA", "display": "VanEck Semiconductor UCITS ETF"},
+    # detenu : ligne que l'utilisateur possede (achat du 22/10/2026) -- ses
+    # alertes d'achat sont formulees en rappel de versement (cf. NOTE_DETENU
+    # dans trading_alert.py).
+    {"symbol": "VVSM.XETRA", "display": "VanEck Semiconductor UCITS ETF", "detenu": True},
     {"symbol": "NUKL.XETRA", "display": "VanEck Uranium & Nuclear Technologies UCITS ETF"},
-    {"symbol": "SEC0.XETRA", "display": "iShares MSCI Global Semiconductors UCITS ETF"},
+    {"symbol": "SEC0.XETRA", "display": "iShares MSCI Global Semiconductors UCITS ETF", "detenu": True},
     {"symbol": "HNSC.LSE", "display": "HSBC Nasdaq Global Semiconductor UCITS ETF"},
     # Remplace 159995.SHE (ChinaAMC CSI Semiconductor Chip, A-share de Shenzhen
     # inaccessible depuis un courtier europeen) le 15/10/2026 : l'ETF UCITS le

@@ -104,6 +104,9 @@ class _BaseIntegration(unittest.TestCase):
             patch.object(self.module, "SUPABASE_URL", ""),
             patch.object(self.module, "SUPABASE_SERVICE_ROLE_KEY", ""),
             patch.object(self.module, "send_telegram", self.send),
+            # Mode court terme explicite : ces scenarios couvrent ventes et
+            # objectif / stop (le long terme a test_long_terme.py).
+            patch.object(trading_alert, "MODE_LONG_TERME", False),
         ] + self._extra_patches()
         for p in patches:
             p.start()

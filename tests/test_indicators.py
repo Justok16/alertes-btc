@@ -110,6 +110,7 @@ class TestRecuperationDesCours(unittest.TestCase):
     def test_alpaca_cours_ajustes_des_splits_et_dernieres_bougies(self):
         # Alpaca renvoie les bougies en ordre DECROISSANT (sort=desc) : la plus recente d'abord
         with patch.object(ta, "ALPACA_API_KEY_ID", "k"), patch.object(ta, "ALPACA_API_SECRET_KEY", "s"), \
+                patch.object(ta, "MODE_LONG_TERME", False), \
                 patch.object(ta, "get_with_retry", return_value=_reponse({"bars": [{"c": 11.5}, {"c": 10}]})) as get:
             self.assertEqual(ta.fetch_alpaca_closes(MagicMock(), "SPY"), [10.0, 11.5])   # remis en chronologique
         params = get.call_args.kwargs["params"]

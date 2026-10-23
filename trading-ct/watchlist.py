@@ -13,7 +13,10 @@ asset_class:
 """
 
 WATCHLIST = [
-    {"symbol": "BTCUSDT", "display": "Bitcoin", "asset_class": "crypto"},
+    # detenu : ligne que l'utilisateur possede (achat du 22/10/2026) -- ses
+    # alertes d'achat sont formulees en rappel de versement (cf. NOTE_DETENU
+    # dans trading_alert.py).
+    {"symbol": "BTCUSDT", "display": "Bitcoin", "asset_class": "crypto", "detenu": True},
     {"symbol": "ETHUSDT", "display": "Ethereum", "asset_class": "crypto"},
     {"symbol": "SPY", "display": "S&P 500 ETF", "asset_class": "etf"},
     {"symbol": "QQQ", "display": "Nasdaq 100 ETF", "asset_class": "etf"},

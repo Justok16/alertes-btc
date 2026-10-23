@@ -94,6 +94,9 @@ ALPACA_BARS_URL = "https://data.alpaca.markets/v2/stocks/{symbol}/bars"
 # desormais les `limit` dernieres bougies sur ALPACA_HISTORY_DAYS jours
 # calendaires (sort=desc puis remise dans l'ordre chronologique).
 ALPACA_HISTORY_DAYS = 10
+# Bougies journalieres (strategie long terme) : 100 seances de bourse
+# demandent environ 145 jours calendaires ; 200 laisse de la marge (feries).
+ALPACA_HISTORY_DAYS_DAILY = 200
 # Sonde du 22/10/2026 (alpaca_probe.py) : sur le flux IEX gratuit, les titres
 # peu echanges n'ont presque pas de bougies (SMHC : 3 en 10 jours, KTEC : 24),
 # donc jamais de MACD ni d'alerte. Le flux consolide `sip` (toutes les bourses
@@ -289,7 +292,8 @@ def home_score(closes):
     return round((rsi14 + stoch14) / 2, 1)
 
 
-def fetch_binance_closes(session, symbol, interval="15m", limit=100):
+def fetch_binance_closes(session, symbol, interval=None, limit=100):
+    interval = interval or ("1d" if MODE_LONG_TERME else "15m")   # cf. MODE_LONG_TERME
     try:
         r = get_with_retry(
             session, BINANCE_KLINES_URL, params={"symbol": symbol, "interval": interval, "limit": limit}
@@ -300,10 +304,12 @@ def fetch_binance_closes(session, symbol, interval="15m", limit=100):
         return None
 
 
-def fetch_alpaca_closes(session, symbol, timeframe="15Min", limit=100, feed=None):
+def fetch_alpaca_closes(session, symbol, timeframe=None, limit=100, feed=None):
     if not ALPACA_API_KEY_ID or not ALPACA_API_SECRET_KEY:
         print(f"[alpaca] cles API manquantes, {symbol} ignore", file=sys.stderr)
         return None
+    timeframe = timeframe or ("1Day" if MODE_LONG_TERME else "15Min")   # cf. MODE_LONG_TERME
+    history_days = ALPACA_HISTORY_DAYS if timeframe == "15Min" else ALPACA_HISTORY_DAYS_DAILY
     feed = feed or ALPACA_FEED
     now = datetime.now(timezone.utc)
     # adjustment=split : evite qu'un split boursier apparaisse comme
@@ -311,7 +317,7 @@ def fetch_alpaca_closes(session, symbol, timeframe="15Min", limit=100, feed=None
     params = {
         "timeframe": timeframe, "limit": limit, "feed": feed, "adjustment": "split",
         # cf. ALPACA_HISTORY_DAYS : les `limit` DERNIERES bougies, pas celles du jour
-        "start": (now - timedelta(days=ALPACA_HISTORY_DAYS)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "start": (now - timedelta(days=history_days)).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "sort": "desc",
     }
     if feed == "sip":
@@ -428,11 +434,56 @@ def send_telegram(session, message):
     r.raise_for_status()
 
 
-def signal_title(result, upgrade=False):
+# Strategie long terme (23/10/2026, a la demande de l'utilisateur, qui
+# investit a long terme) -- active par defaut, MODE_STRATEGIE=court_terme pour
+# revenir a l'ancien comportement :
+#   - bougies JOURNALIERES pour les actions/ETF US et la crypto (au lieu de
+#     15 min) : un creux de quelques heures n'est pas une opportunite long
+#     terme. Le bot Europe etait deja en journalier.
+#   - une alerte d'achat devient une opportunite d'entree (ou un rappel de
+#     versement pour une ligne detenue, "detenu": True dans la watchlist) ;
+#   - plus de signal de vente ni de suivi objectif / stop (exit_rules.py) :
+#     vendre sur une baisse de quelques pour cent va a l'encontre d'un
+#     placement long terme. L'etat de transition reste mis a jour
+#     normalement, un signal de vente ignore ne ressort donc jamais plus tard.
+MODE_LONG_TERME = os.environ.get("MODE_STRATEGIE", "long_terme").strip().lower() != "court_terme"
+NOTE_DETENU = (
+    "📌 Ligne long terme que tu détiens déjà : ce n'est pas un signal d'entrée, c'est un rappel "
+    "qu'un versement supplémentaire (en plus de ton plan programmé) se fait ici à meilleur prix, "
+    "si ton budget le permet. Aucune vente n'est suggérée."
+)
+NOTE_OPPORTUNITE = (
+    "📌 Stratégie long terme : baisse marquée sur un actif suivi. Point d'entrée possible pour un "
+    "placement de plusieurs années, idéalement en plusieurs fois. Aucune vente n'est suggérée."
+)
+
+
+def est_long_terme(item=None):
+    """Toute la liste est en long terme tant que MODE_LONG_TERME est actif."""
+    return MODE_LONG_TERME
+
+
+def est_detenu(item):
+    return bool(item.get("detenu"))
+
+
+def note_long_terme(detenu):
+    return NOTE_DETENU if detenu else NOTE_OPPORTUNITE
+
+
+def signal_title(result, upgrade=False, long_terme=False, detenu=False):
     """Titre + ligne d'explication du niveau (partage avec trading_alert_eu.py)."""
     if result["combined"] == "sell":
         return "🔴 SIGNAL DE VENTE", None
     level = result.get("level") or "strong"
+    if long_terme:
+        prefixe = "💶 RAPPEL DE VERSEMENT" if detenu else "💶 OPPORTUNITÉ LONG TERME"
+        if upgrade:
+            return (f"{prefixe} — BAISSE RENFORCÉE",
+                    f"Les 3 indicateurs sont maintenant à {RSI_BUY} ou moins.")
+        if level == "moderate":
+            return f"{prefixe} — BAISSE MARQUÉE", f"Les 3 indicateurs sont à {MODERATE_BUY} ou moins."
+        return f"{prefixe} — BAISSE FORTE", f"Les 3 indicateurs sont à {RSI_BUY} ou moins."
     if upgrade:
         return "🟢 SIGNAL D'ACHAT RENFORCÉ → FORT", f"Les 3 indicateurs sont maintenant à {RSI_BUY} ou moins."
     if level == "moderate":
@@ -441,8 +492,8 @@ def signal_title(result, upgrade=False):
     return "🟢 SIGNAL D'ACHAT FORT", f"Les 3 indicateurs sont à {RSI_BUY} ou moins."
 
 
-def build_message(result, upgrade=False):
-    titre, explication = signal_title(result, upgrade)
+def build_message(result, upgrade=False, long_terme=False, detenu=False):
+    titre, explication = signal_title(result, upgrade, long_terme, detenu)
     lines = [
         f"⚡ <b>Trading CT</b> — {titre}",
         f"{result['display']} ({result['symbol']}) — prix actuel : {result['price']}",
@@ -453,6 +504,8 @@ def build_message(result, upgrade=False):
     ]
     if explication:
         lines += ["", explication]
+    if long_terme:
+        lines += ["", note_long_terme(detenu)]
     lines += ["", "Signal technique automatisé, pas un conseil financier. Décision et exécution manuelles."]
     return "\n".join(lines)
 
@@ -588,10 +641,15 @@ def main():
         ) else None
         upgrade = is_upgrade(previous, previous_level, result)
         alert_sent = False
+        long_terme = est_long_terme(item)
+        if long_terme and new_alert == "sell":
+            print(f"{symbol}: signal de vente non envoye (strategie long terme)")
+            new_alert = None
 
         if new_alert or upgrade:
             try:
-                send_telegram(session, build_message(result, upgrade=upgrade))
+                send_telegram(session, build_message(result, upgrade=upgrade, long_terme=long_terme,
+                                                     detenu=est_detenu(item)))
                 alert_sent = True
                 detail = "renforcee" if upgrade else (result.get("level") or "")
                 print(f"Alerte envoyee pour {symbol}: {result['combined']} {detail}".rstrip())
@@ -616,9 +674,10 @@ def main():
         # d'achat) -- cf. exit_rules.py. L'etat de transition ci-dessous est
         # mis a jour quoi qu'il arrive (meme principe que l'audit du
         # 30/08/2026 : une alerte de sortie n'est tentee qu'UNE fois).
+        # Strategie long terme : pas de suivi objectif / stop (cf. MODE_LONG_TERME).
         old_entry = state.get(symbol, {}).get("entry")
         target_pct, stop_pct = exit_rules.exit_rule_for(item)
-        entry, exit_event = exit_rules.step_position(
+        entry, exit_event = (None, None) if long_terme else exit_rules.step_position(
             old_entry, new_alert, alert_sent, result["price"],
             datetime.now(timezone.utc), target_pct, stop_pct,
         )

@@ -21,7 +21,13 @@ signal de vente (avidité extrême). Une alerte n'est envoyée que si **au
 moins 2 sources sur 3** confirment le même sens au même moment, et que
 l'état combiné vient de changer par rapport à la veille.
 
-## `trading-ct/` — alertes court/moyen terme multi-actifs
+## `trading-ct/` — alertes long terme multi-actifs (achat sur les baisses)
+
+Depuis le 23/10/2026, stratégie **long terme** par défaut : bougies
+journalières partout, alertes « 💶 RAPPEL DE VERSEMENT » sur les lignes
+détenues et « 💶 OPPORTUNITÉ LONG TERME » sur les autres, plus aucun signal
+de vente ni objectif / stop (détail dans `trading-ct/README.md`,
+`MODE_STRATEGIE=court_terme` pour revenir en arrière).
 
 Bot séparé, dans le même esprit, qui surveille une watchlist de crypto,
 actions et ETF US (`watchlist.py` : BTC, ETH, SPY, QQQ, ETF semi-conducteurs,

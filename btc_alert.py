@@ -281,8 +281,19 @@ def send_telegram(session, message):
     r.raise_for_status()
 
 
-def build_message(direction, score_alt, score_cg, score_cmc):
-    emoji = "🟢 SIGNAL D'ACHAT" if direction == "buy" else "🔴 SIGNAL DE VENTE"
+# Mode long terme (23/10/2026) : l'utilisateur detient du bitcoin en
+# placement long terme. Une zone de peur extreme devient un rappel de
+# versement supplementaire ; la zone d'avidite extreme n'envoie plus de
+# signal de vente (l'etat est quand meme enregistre, rien ne ressort plus
+# tard). Mettre a False pour revenir aux signaux d'achat ET de vente.
+LONG_TERME = os.environ.get("MODE_STRATEGIE", "long_terme").strip().lower() != "court_terme"
+
+
+def build_message(direction, score_alt, score_cg, score_cmc, long_terme=False):
+    if direction == "buy" and long_terme:
+        emoji = "💶 RAPPEL DE VERSEMENT"
+    else:
+        emoji = "🟢 SIGNAL D'ACHAT" if direction == "buy" else "🔴 SIGNAL DE VENTE"
     zone = "peur extreme" if direction == "buy" else "avidite extreme"
     lines = [f"🟠 <b>BTC Alert</b> — {emoji}", f"Le marche Bitcoin entre en zone de {zone}.", ""]
     if score_alt is not None:
@@ -291,6 +302,9 @@ def build_message(direction, score_alt, score_cg, score_cmc):
         lines.append(f"• Score maison (ATH + RSI hebdo) : {score_cg}/100")
     if score_cmc is not None:
         lines.append(f"• CoinMarketCap F&G : {score_cmc}/100")
+    if direction == "buy" and long_terme:
+        lines += ["", "📌 Placement long terme : moment favorable pour un versement supplémentaire, "
+                      "si ton budget le permet. Aucune vente n'est suggérée."]
     return "\n".join(lines)
 
 
@@ -363,8 +377,10 @@ def main():
     # Telegram remarche, potentiellement avec un signal devenu perime
     # entre-temps.
     alerte_echouee = False
-    if combined_state in ("buy", "sell") and combined_state != previous_combined:
-        message = build_message(combined_state, score_alt, score_cg, score_cmc)
+    if LONG_TERME and combined_state == "sell" and combined_state != previous_combined:
+        print("Zone d'avidite extreme : pas de signal de vente (placement long terme).")
+    elif combined_state in ("buy", "sell") and combined_state != previous_combined:
+        message = build_message(combined_state, score_alt, score_cg, score_cmc, long_terme=LONG_TERME)
         try:
             send_telegram(session, message)
             print("Alerte envoyee:", combined_state)
