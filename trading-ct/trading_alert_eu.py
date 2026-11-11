@@ -24,7 +24,8 @@ from eu_watchlist import EU_WATCHLIST  # noqa: E402
 from trading_alert import (  # noqa: E402
     HOME_BUY, HOME_SELL, MACD_BUY, MACD_SELL, RSI_BUY, RSI_SELL,
     classify, combine_signal, compute_rsi, episode_level, get_with_retry, home_score,
-    est_detenu, est_long_terme, is_upgrade, macd_score, note_long_terme, send_telegram, signal_title,
+    RAPPEL_MIN_JOURS, dernier_achat_apres, est_detenu, est_long_terme, filtre_doublon, is_upgrade,
+    macd_score, maintenant, note_long_terme, send_telegram, signal_title,
 )
 
 import json
@@ -221,7 +222,7 @@ def evaluate_symbol(session, item):
 
 def main():
     state = load_state()
-    debut_cycle = datetime.now(timezone.utc)
+    debut_cycle = maintenant()
     if cycle_deja_fait(state.get("_meta") or {}, debut_cycle):
         print(f"Cycle ignore : deja execute depuis la derniere cloture Xetra "
               f"({derniere_cloture_xetra(debut_cycle):%d/%m %H:%M} Europe/Berlin). "
@@ -249,6 +250,14 @@ def main():
         if long_terme and new_alert == "sell":
             print(f"{symbol}: signal de vente non envoye (strategie long terme)")
             new_alert = None
+        # Anti-doublon : cf. RAPPEL_MIN_JOURS dans trading_alert.py.
+        dernier_achat = state.get(symbol, {}).get("dernier_achat")
+        if long_terme and (new_alert or upgrade):
+            avant = (new_alert, upgrade)
+            new_alert, upgrade = filtre_doublon(dernier_achat, new_alert, upgrade, result.get("level"), debut_cycle)
+            if (new_alert, upgrade) != avant:
+                print(f"{symbol}: alerte d'achat deja envoyee le {str(dernier_achat.get('ts'))[:10]} "
+                      f"(moins de {RAPPEL_MIN_JOURS} jours, meme niveau) : pas de doublon")
 
         if new_alert or upgrade:
             try:
@@ -296,6 +305,10 @@ def main():
             state[symbol]["level"] = level
         if entry:
             state[symbol]["entry"] = entry
+        dernier_achat = dernier_achat_apres(dernier_achat, alert_sent, new_alert, upgrade,
+                                            result.get("level"), debut_cycle)
+        if dernier_achat:
+            state[symbol]["dernier_achat"] = dernier_achat
 
     # cf. SEUIL_ECHECS_CONSECUTIFS plus haut. `_meta` : cle reservee, ne
     # peut jamais collisionner avec un symbole.

@@ -32,6 +32,12 @@ baisses marquees**. Concretement :
   une variation de quelques pour cent va a l'encontre d'un placement de
   plusieurs annees. Meme chose pour `btc_alert.py` (zone d'avidite extreme
   silencieuse, zone de peur extreme = rappel de versement).
+- **Anti-doublon (11/11/2026)** : une meme alerte n'est renvoyee pour un
+  actif qu'apres 7 jours (`RAPPEL_MIN_JOURS`), sauf si la baisse s'aggrave
+  (marquee -> forte), qui passe toujours. Sans cette regle, un actif qui
+  oscillait autour du seuil pendant la seance renvoyait la meme alerte a
+  chaque passage : du 23/10 au 11/11, 43 alertes US dont une trentaine de
+  doublons (Modine 8 fois le 05/11) ; rejouees avec la regle, il en reste 13.
 - Quand tu achetes une nouvelle ligne, ajoute `"detenu": True` a son entree
   dans la watchlist (ou demande-le) pour recevoir des rappels de versement.
 

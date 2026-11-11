@@ -7,7 +7,7 @@ import os
 import sys
 import tempfile
 import unittest
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -164,6 +164,89 @@ class TestBoucleEurope(_Boucle):
 
     def test_opportunites_sans_vente_ni_sortie(self):
         self.scenario("OPPORTUNITÉ LONG TERME")
+
+
+class TestAntiDoublon(unittest.TestCase):
+    """Bougie du jour en cours : un actif qui oscille autour du seuil ne doit
+    pas renvoyer la meme alerte (cas reel : MOD 8 fois le 05/11/2026)."""
+
+    T0 = datetime(2026, 11, 5, 15, 0, tzinfo=timezone.utc)
+
+    def test_helper(self):
+        d = {"ts": self.T0.isoformat(), "level": "moderate"}
+        jour = timedelta(days=1)
+        self.assertTrue(trading_alert.rappel_deja_envoye(d, "moderate", self.T0 + jour))
+        self.assertFalse(trading_alert.rappel_deja_envoye(d, "strong", self.T0 + jour))    # aggravation
+        self.assertFalse(trading_alert.rappel_deja_envoye(d, "moderate", self.T0 + 7 * jour))
+        fort = {"ts": self.T0.isoformat(), "level": "strong"}
+        self.assertTrue(trading_alert.rappel_deja_envoye(fort, "moderate", self.T0 + jour))
+        for invalide in (None, {}, {"ts": "pas une date"}, "x"):
+            self.assertFalse(trading_alert.rappel_deja_envoye(invalide, "moderate", self.T0))
+
+
+def _boucle_horodatee(base):
+    class _B(base):
+        def messages(self):
+            # Les sauts de plusieurs jours de l'horloge simulee declenchent aussi
+            # l'alerte « bot interrompu » du bot US : on ne compte que les alertes.
+            return [m for m in super().messages() if "BAISSE" in m or "SIGNAL D" in m]
+
+        def cycle_a(self, quand, combined, level, price):
+            with patch.object(trading_alert, "maintenant", return_value=quand), \
+                    patch.object(trading_alert_eu, "maintenant", return_value=quand):
+                self.cycle(combined, level, price)
+
+        def scenario_doublons(self):
+            t0 = TestAntiDoublon.T0
+            m = timedelta(minutes=5)
+            self.cycle_a(t0, "buy", "moderate", 100)
+            for i in range(1, 9):                          # oscillation pendant la seance
+                self.cycle_a(t0 + (2 * i - 1) * m, "neutral", None, 101)
+                self.cycle_a(t0 + 2 * i * m, "buy", "moderate", 100)
+            self.assertEqual(len(self.messages()), 1)
+            self.cycle_a(t0 + timedelta(days=2), "neutral", None, 99)
+            self.cycle_a(t0 + timedelta(days=2, minutes=5), "buy", "strong", 90)   # aggravation
+            self.assertEqual(len(self.messages()), 2)
+            self.assertIn("BAISSE FORTE", self.messages()[1])
+            self.cycle_a(t0 + timedelta(days=3), "neutral", None, 95)
+            self.cycle_a(t0 + timedelta(days=3, minutes=5), "buy", "strong", 90)   # meme niveau : rien
+            self.cycle_a(t0 + timedelta(days=4), "buy", "strong", 89)
+            self.assertEqual(len(self.messages()), 2)
+            self.cycle_a(t0 + timedelta(days=10), "neutral", None, 95)            # 8 jours apres le fort
+            self.cycle_a(t0 + timedelta(days=10, minutes=5), "buy", "moderate", 92)
+            self.assertEqual(len(self.messages()), 3)
+            self.assertEqual(self.etat()["dernier_achat"]["level"], "moderate")
+    return _B
+
+
+class TestAntiDoublonCrypto(_boucle_horodatee(_Boucle)):
+    module = trading_alert
+    item = {"symbol": "MOD", "display": "Modine", "asset_class": "stock"}
+
+    def test_oscillation_puis_aggravation_puis_delai(self):
+        self.scenario_doublons()
+
+    def test_echec_telegram_ne_memorise_pas_l_alerte(self):
+        self.send.side_effect = RuntimeError("telegram en panne")
+        with self.assertRaises(SystemExit):
+            self.cycle_a(TestAntiDoublon.T0, "buy", "moderate", 100)
+        self.assertNotIn("dernier_achat", self.etat())
+
+    def test_mode_court_terme_sans_anti_doublon(self):
+        with patch.object(trading_alert, "MODE_LONG_TERME", False):
+            t0 = TestAntiDoublon.T0
+            self.cycle_a(t0, "buy", "moderate", 100)
+            self.cycle_a(t0 + timedelta(minutes=5), "neutral", None, 101)
+            self.cycle_a(t0 + timedelta(minutes=10), "buy", "moderate", 100)
+        self.assertEqual(len(self.messages()), 2)
+
+
+class TestAntiDoublonEurope(_boucle_horodatee(_Boucle)):
+    module = trading_alert_eu
+    item = {"symbol": "SEC0.XETRA", "display": "iShares Semis", "detenu": True}
+
+    def test_oscillation_puis_aggravation_puis_delai(self):
+        self.scenario_doublons()
 
 
 class TestBtcAlertLongTerme(unittest.TestCase):

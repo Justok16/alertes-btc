@@ -467,6 +467,51 @@ def est_detenu(item):
     return bool(item.get("detenu"))
 
 
+# Anti-doublon (11/11/2026). En bougies journalieres, le cycle de 5 min
+# recalcule les indicateurs sur la bougie du jour EN COURS : un actif qui
+# oscille autour du seuil pendant la seance repassait buy -> neutral -> buy et
+# renvoyait la meme alerte (recensement du 23/10 au 11/11 : 43 alertes US dont
+# ~25 doublons du jour, ex. MOD 8 fois le 05/11, VRT 6 fois le 26/10). En
+# strategie long terme, une alerte d'achat n'est donc renvoyee pour un meme
+# actif qu'apres RAPPEL_MIN_JOURS jours, sauf si la baisse s'aggrave (modere
+# -> fort), qui passe toujours.
+RAPPEL_MIN_JOURS = 7
+_RANG_NIVEAU = {"moderate": 1, "strong": 2}
+
+
+def maintenant():
+    return datetime.now(timezone.utc)
+
+
+def rappel_deja_envoye(dernier, level, now, jours=RAPPEL_MIN_JOURS):
+    """True si une alerte d'achat de niveau >= `level` est partie il y a moins de `jours` jours."""
+    if not isinstance(dernier, dict):
+        return False
+    try:
+        ts = datetime.fromisoformat(dernier["ts"])
+    except (KeyError, TypeError, ValueError):
+        return False
+    if now - ts >= timedelta(days=jours):
+        return False
+    return _RANG_NIVEAU.get(dernier.get("level"), 2) >= _RANG_NIVEAU.get(level or "strong", 2)
+
+
+def filtre_doublon(dernier, new_alert, upgrade, level, now):
+    """(new_alert, upgrade) apres filtrage anti-doublon (strategie long terme uniquement)."""
+    if new_alert == "buy" and rappel_deja_envoye(dernier, level, now):
+        new_alert = None
+    if upgrade and rappel_deja_envoye(dernier, "strong", now):
+        upgrade = False
+    return new_alert, upgrade
+
+
+def dernier_achat_apres(dernier, alert_sent, new_alert, upgrade, level, now):
+    """Memoire de la derniere alerte d'achat envoyee, mise a jour seulement si elle est partie."""
+    if alert_sent and (new_alert == "buy" or upgrade):
+        return {"ts": now.isoformat(), "level": "strong" if upgrade else (level or "strong")}
+    return dernier if isinstance(dernier, dict) else None
+
+
 def note_long_terme(detenu):
     return NOTE_DETENU if detenu else NOTE_OPPORTUNITE
 
@@ -592,7 +637,7 @@ def interruption_message(meta, now):
 
 
 def main():
-    debut_cycle = datetime.now(timezone.utc)
+    debut_cycle = maintenant()
     state = load_state()
     # Audit du 03/09/2026 : une seule Session() reutilisee pour tout le run
     # (au lieu d'un requests.get/post independant par appel) garde la
@@ -645,6 +690,13 @@ def main():
         if long_terme and new_alert == "sell":
             print(f"{symbol}: signal de vente non envoye (strategie long terme)")
             new_alert = None
+        dernier_achat = state.get(symbol, {}).get("dernier_achat")
+        if long_terme and (new_alert or upgrade):
+            avant = (new_alert, upgrade)
+            new_alert, upgrade = filtre_doublon(dernier_achat, new_alert, upgrade, result.get("level"), debut_cycle)
+            if (new_alert, upgrade) != avant:
+                print(f"{symbol}: alerte d'achat deja envoyee le {str(dernier_achat.get('ts'))[:10]} "
+                      f"(moins de {RAPPEL_MIN_JOURS} jours, meme niveau) : pas de doublon")
 
         if new_alert or upgrade:
             try:
@@ -699,6 +751,10 @@ def main():
             state[symbol]["level"] = level
         if entry:
             state[symbol]["entry"] = entry
+        dernier_achat = dernier_achat_apres(dernier_achat, alert_sent, new_alert, upgrade,
+                                            result.get("level"), debut_cycle)
+        if dernier_achat:
+            state[symbol]["dernier_achat"] = dernier_achat
 
     # cf. SEUIL_ECHECS_CRYPTO_CONSECUTIFS plus haut. `_meta` : cle reservee,
     # ne peut jamais collisionner avec un symbole (toujours en majuscules).
@@ -734,6 +790,9 @@ def main():
         try:
             send_telegram(session, msg_interruption)
             meta["derniere_alerte_interruption"] = debut_cycle.isoformat()
+            # Trace dans le journal du run (11/11/2026 : panne GitHub Actions de
+            # 20:20 a 20:50 UTC, l'envoi n'etait verifiable que dans Telegram).
+            print(f"Alerte d'interruption envoyee (dernier cycle : {meta.get('last_run_at')})")
         except Exception as e:
             print(f"[telegram] echec de l'alerte d'interruption: {e}", file=sys.stderr)
     meta["last_run_at"] = debut_cycle.isoformat()
