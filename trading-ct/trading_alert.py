@@ -790,6 +790,9 @@ def main():
         try:
             send_telegram(session, msg_interruption)
             meta["derniere_alerte_interruption"] = debut_cycle.isoformat()
+            # Trace dans le journal du run (11/11/2026 : panne GitHub Actions de
+            # 20:20 a 20:50 UTC, l'envoi n'etait verifiable que dans Telegram).
+            print(f"Alerte d'interruption envoyee (dernier cycle : {meta.get('last_run_at')})")
         except Exception as e:
             print(f"[telegram] echec de l'alerte d'interruption: {e}", file=sys.stderr)
     meta["last_run_at"] = debut_cycle.isoformat()

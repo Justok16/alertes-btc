@@ -1,10 +1,12 @@
 """Alerte d'interruption du bot (trou entre deux cycles) : calcul pur + integration
 dans trading_alert.main() (aucun reseau, Telegram mocke, etat dans un fichier temporaire)."""
 
+import io
 import json
 import sys
 import tempfile
 import unittest
+from contextlib import redirect_stdout
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -120,6 +122,13 @@ class TestInterruptionDansMain(unittest.TestCase):
         self.assertIn("derniere_alerte_interruption", self.meta())
         self.cycle()                                   # cycle suivant : plus de trou
         self.assertEqual(len(self.messages()), 1)
+
+    def test_envoi_trace_dans_le_journal(self):
+        self.ecrire_dernier_cycle(minutes=35)          # panne GitHub du 11/11/2026
+        out = io.StringIO()
+        with redirect_stdout(out):
+            self.cycle()
+        self.assertIn("Alerte d'interruption envoyee", out.getvalue())
 
     def test_echec_telegram_ne_fait_pas_echouer_le_job(self):
         self.ecrire_dernier_cycle(minutes=105)
