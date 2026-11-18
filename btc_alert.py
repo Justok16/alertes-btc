@@ -286,6 +286,10 @@ def send_telegram(session, message):
 # versement supplementaire ; la zone d'avidite extreme n'envoie plus de
 # signal de vente (l'etat est quand meme enregistre, rien ne ressort plus
 # tard). Mettre a False pour revenir aux signaux d'achat ET de vente.
+# Duree pendant laquelle la derniere zone CoinMarketCap reste utilisable
+# quand la source ne repond pas (cf. main()).
+CMC_ZONE_VALIDITE_S = 48 * 3600
+
 LONG_TERME = os.environ.get("MODE_STRATEGIE", "long_terme").strip().lower() != "court_terme"
 
 
@@ -324,6 +328,22 @@ def main():
     print(f"Alternative.me: score={score_alt} zone={zone_alt}")
     print(f"CoinGecko maison: score={score_cg} zone={zone_cg}")
     print(f"CoinMarketCap (bonus): score={score_cmc} zone={zone_cmc}")
+
+    # 18/11/2026 (accord de Justok) : CoinMarketCap repond souvent 429 la nuit.
+    # Compter la source comme absente faisait retomber l'etat combine de "buy"
+    # a "neutral" (1 seule source d'accord), puis le passage suivant, CMC de
+    # retour, renvoyait la MEME alerte d'achat (doublons reels les 14 et
+    # 15/11). On reutilise donc sa derniere zone connue si elle date de moins
+    # de CMC_ZONE_VALIDITE_S ; au-dela, la source est consideree absente.
+    maintenant = time.time()
+    if zone_cmc is not None:
+        state["cmc_zone_ts"] = maintenant
+    else:
+        ts_cmc = state.get("cmc_zone_ts")
+        zone_memo = state.get("cmc_zone")
+        if zone_memo and ts_cmc and maintenant - ts_cmc < CMC_ZONE_VALIDITE_S:
+            zone_cmc = zone_memo
+            print(f"CoinMarketCap indisponible : reprise de sa derniere zone connue ({zone_cmc}).")
 
     # cf. SEUIL_ECHECS_SOURCES_CONSECUTIFS plus haut : detecte une panne
     # durable des 2 sources OBLIGATOIRES (sans quoi aucune alerte n'est
